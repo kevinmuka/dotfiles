@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="macbackup is a personal backup tool that runs locally on a Mac and saves selected files to the owner's cloud accounts.">
+  <title>macbackup — Personal Mac backups</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><a class="brand" href="index.html">macbackup</a><nav aria-label="Main navigation"><a href="privacy.html">Privacy policy</a></nav></header>
+  <main>
+    <p class="eyebrow">Personal backup utility</p>
+    <h1>Selected Mac files, backed up to the owner's cloud.</h1>
+    <p class="lead">macbackup runs locally on a Mac. It uses rclone to copy selected folders and files directly to cloud storage accounts controlled by the owner.</p>
+    <section>
+      <h2>How it works</h2>
+      <p>The owner chooses the files to back up, the files to exclude, and which files to encrypt before transfer. Readable backups can be consulted through Google Drive. Private backups are encrypted locally using rclone crypt.</p>
+      <p>Previous versions are kept in a backup history. The owner controls the backup configuration and removal of stored copies.</p>
+    </section>
+    <section>
+      <h2>Google Drive access</h2>
+      <p>The application uses Google OAuth to obtain permission to manage backup files authorized to the application, using the <code>drive.file</code> scope. This access is used to create, read, update and delete the backup files managed by macbackup.</p>
+      <p>Google authorization takes place in the browser. Backup transfers go directly between the owner's Mac and the configured storage provider.</p>
+    </section>
+    <section>
+      <h2>Privacy and contact</h2>
+      <p>Read the <a href="privacy.html">privacy policy</a> for details about data use, storage and revoking access.</p>
+      <p>Support: <a href="mailto:kevinmuka03@gmail.com">kevinmuka03@gmail.com</a></p>
+    </section>
+  </main>
+  <footer>macbackup · Personal use · <a href="privacy.html">Privacy policy</a></footer>
+</body>
+</html>
