@@ -5,15 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A guided tour of Kevin Muka's dotfiles: backups, Neovim, safe symlinks and a shared terminal theme.">
 <title>dotfiles — kevinmuka</title>
+<link rel="canonical" href="https://dotfiles.kevinmuka.dev/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dotfiles.kevinmuka.dev/">
+<meta property="og:title" content="dotfiles — kevinmuka">
+<meta property="og:description" content="A guided tour of Kevin Muka&#x27;s dotfiles: backups, Neovim, safe symlinks and a shared terminal theme.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script src="site.js" defer></script>
 </head>
 <body>
 <header class="site-header"><div class="wrap header-inner">
   <a class="brand" href="./"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
-  <nav class="top-nav" aria-label="Main navigation"><a href="./" aria-current="page">Overview</a><a href="macbackup/">macbackup</a><a href="nvim/">Neovim</a><a href="symlinks/">Symlinks</a><a href="theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+  <nav class="top-nav" aria-label="Main navigation"><a href="macbackup/">macbackup</a><a href="nvim/">Neovim</a><a href="symlinks/">Symlinks</a><a href="theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
 </div></header>
 <main>
 <div class="wrap hero">
@@ -21,7 +27,7 @@
     <p class="eyebrow">One repository · several daily tools</p>
     <h1>A home for the tools <strong>behind my Mac.</strong></h1>
     <p class="lead">Shell, editor, terminal and backup configuration, kept together without turning the home directory into a mystery. Explore how each piece works and where its source lives.</p>
-    <div class="hero-actions"><a class="button primary" href="#explore">Explore the setup ↓</a><a class="button" href="symlinks/">How the links work</a></div>
+    <div class="hero-actions"><a class="button primary" href="#explore">Explore the setup ↓</a><a class="button link-journey" href="symlinks/"><span class="journey-label">How the links work</span><span class="journey-arrow" aria-hidden="true">↗</span></a></div>
   </div>
   <div class="terminal" aria-label="Repository layout illustration">
     <div class="terminal-bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>~/.dotfiles</span></div>
@@ -42,7 +48,7 @@
 <section class="section" id="explore"><div class="wrap">
   <div class="section-head"><div><p class="eyebrow">Explore the system</p><h2>Start with a tool.</h2></div><p>Each page explains the role of a module, its safety boundaries, and where to find the complete source or guide.</p></div>
   <div class="cards">
-    <a class="card accent" href="macbackup/"><span class="index">01 / DATA</span><h3>macbackup</h3><p>Selected files on Google Drive, private paths encrypted before upload, and a history you can inspect and clean deliberately.</p><span class="card-footer"><span>Backup · rclone · recovery</span><span>Explore →</span></span></a>
+    <a class="card accent" href="macbackup/"><img class="card-mark" src="macbackup/logo.svg" alt=""><span class="index">01 / DATA</span><h3>macbackup</h3><p>Selected files on Google Drive, private paths encrypted before upload, and a history you can inspect and clean deliberately.</p><span class="card-footer"><span>Backup · rclone · recovery</span><span>Explore →</span></span></a>
     <a class="card blue" href="nvim/"><span class="index">02 / EDITOR</span><h3>Neovim</h3><p>A modular setup with a small core, lazy-loaded plugins, LSP tooling and a theme shared with the terminal.</p><span class="card-footer"><span>Lua · lazy.nvim · workflow</span><span>Explore →</span></span></a>
     <a class="card orange" href="symlinks/"><span class="index">03 / BOOTSTRAP</span><h3>Symlink manager</h3><p>See what would change, apply only safe links, and handle existing files explicitly with dot.sh.</p><span class="card-footer"><span>Plan · apply · conflicts</span><span>Explore →</span></span></a>
     <a class="card" href="theme/"><span class="index">04 / INTERFACE</span><h3>Theme &amp; terminal</h3><p>Shared color tokens connect Zsh, WezTerm and Neovim; Karabiner and other modules shape the surrounding workflow.</p><span class="card-footer"><span>Colors · panes · keys</span><span>Explore →</span></span></a>

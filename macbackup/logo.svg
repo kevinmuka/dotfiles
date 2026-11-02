@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">macbackup</title>
+  <desc id="desc">Two overlapping backup copies with an upward arrow.</desc>
+  <rect width="256" height="256" rx="56" fill="#3159d5"/>
+  <rect x="58" y="47" width="124" height="150" rx="20" fill="#a9c0ff"/>
+  <rect x="74" y="63" width="124" height="150" rx="20" fill="#ffffff"/>
+  <path d="M136 164V108m0 0-21 21m21-21 21 21" fill="none" stroke="#3159d5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M110 181h52" fill="none" stroke="#3159d5" stroke-width="9" stroke-linecap="round"/>
+</svg>
