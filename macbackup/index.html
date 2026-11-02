@@ -1,32 +1,33 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A personal Mac backup tool using rclone, encrypted private areas and explicit history management.">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="A personal Mac backup tool using rclone, encrypted private areas and explicit history management." name="description"/>
 <title>macbackup — kevinmuka / dotfiles</title>
-<link rel="canonical" href="https://dotfiles.kevinmuka.dev/macbackup/">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://dotfiles.kevinmuka.dev/macbackup/">
-<meta property="og:title" content="macbackup — kevinmuka / dotfiles">
-<meta property="og:description" content="A personal Mac backup tool using rclone, encrypted private areas and explicit history management.">
-<link rel="stylesheet" href="../style.css">
-<link rel="icon" href="../favicon.svg" type="image/svg+xml">
-<link rel="icon" href="../favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="../apple-touch-icon.png">
-<script src="../site.js" defer></script>
+<link href="https://dotfiles.kevinmuka.dev/macbackup/" rel="canonical"/>
+<meta content="website" property="og:type"/>
+<meta content="https://dotfiles.kevinmuka.dev/macbackup/" property="og:url"/>
+<meta content="macbackup — kevinmuka / dotfiles" property="og:title"/>
+<meta content="A personal Mac backup tool using rclone, encrypted private areas and explicit history management." property="og:description"/>
+<link href="../style.css" rel="stylesheet"/>
+<link href="../favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="../favicon.ico" rel="icon" sizes="any"/>
+<link href="../apple-touch-icon.png" rel="apple-touch-icon"/>
+<script defer="" src="../site.js"></script>
 </head>
 <body>
 <header class="site-header"><div class="wrap header-inner">
-<a class="brand" href="../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
-<nav class="top-nav" aria-label="Main navigation"><a href="../macbackup/" aria-current="page">macbackup</a><a href="../nvim/">Neovim</a><a href="../symlinks/">Symlinks</a><a href="../theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+<a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav aria-label="Main navigation" class="top-nav"><a aria-current="page" href="/macbackup">macbackup</a><a href="/nvim">Neovim</a><a href="/symlinks">Symlinks</a><a href="/theme">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
 </div></header>
 <main>
 <div class="wrap page-hero">
 <p class="eyebrow">macbackup / personal utility</p>
-<div class="product-title"><img class="product-logo" src="logo.svg" alt="" width="80" height="80"><h1>A backup you can inspect and recover.</h1></div>
+<div class="product-title"><img alt="" class="product-logo" height="80" src="logo.svg" width="80"/><h1>A backup you can inspect and recover.</h1></div>
 <p class="lead">macbackup runs locally on the owner's Mac. It selects files by explicit rules, transfers them with rclone to the owner's configured storage, and keeps previous copies in a separate history.</p>
-<div class="actions"><a class="button primary" href="docs/">Read the full manual</a><a class="button" href="privacy.html">Privacy policy</a><a class="text-link" href="https://github.com/kevinmuka/dotfiles/tree/main/home/.config/scripts">View source</a></div>
+<div class="actions"><a class="button primary" href="/macbackup/docs">Read the full manual</a><a class="button" href="/macbackup/privacy">Privacy policy</a><a class="text-link" href="https://github.com/kevinmuka/dotfiles/blob/main/home/.config/scripts/macbackup">View source</a></div>
 </div>
 <section class="section"><div class="wrap">
 <div class="section-head"><div><p class="eyebrow">Two areas</p><h2>Readable where useful. Encrypted where needed.</h2></div><p>The destination follows the original Mac path, so a file can be found again without inventing a second folder scheme.</p></div>
@@ -36,7 +37,7 @@
 </div>
 </div></section>
 <section class="section"><div class="wrap split">
-<div><p class="eyebrow">A deliberate workflow</p><h2>Inspect. Run. Recover.</h2><p class="lead">The selector is local. Cloud checks and transfers are separate operations. Excluding a path later stops future updates; removing copies already in current or history is an explicit step.</p><div class="actions"><a class="button" href="docs/">Commands and examples</a></div></div>
+<div><p class="eyebrow">A deliberate workflow</p><h2>Inspect. Run. Recover.</h2><p class="lead">The selector is local. Cloud checks and transfers are separate operations. Excluding a path later stops future updates; removing copies already in current or history is an explicit step.</p><div class="actions"><a class="button" href="/macbackup/docs">Commands and examples</a></div></div>
 <div class="code-window"><div class="label">terminal / example commands</div><pre>macbackup check
 macbackup preview --target google
 macbackup run --target google
@@ -55,9 +56,9 @@ macbackup versions ~/Documents/example.txt \
 </div></section>
 <section class="section"><div class="wrap split">
 <div><p class="eyebrow">Google OAuth</p><h2>Access to the owner's backup files.</h2><p>The application uses Google OAuth with the <code>drive.file</code> scope to create, list, read, update and delete backup files authorized to it. Authorization happens in the browser; file transfers run directly between the Mac and the storage provider.</p><p>This website is informational. It does not sign in to the owner's account or host the backups.</p></div>
-<div class="panel"><span class="chip orange">PRIVACY</span><h3 style="margin-top:22px">How data is handled</h3><p>The owner controls selection, encryption keys, retention and revocation. The public privacy page explains the Google access and the website.</p><div class="actions"><a class="button" href="privacy.html">Read privacy policy</a></div><p style="margin-top:25px">Support: <a href="mailto:contact@kevinmuka.dev">contact@kevinmuka.dev</a></p></div>
+<div class="panel"><span class="chip orange">PRIVACY</span><h3 style="margin-top:22px">How data is handled</h3><p>The owner controls selection, encryption keys, retention and revocation. The public privacy page explains the Google access and the website.</p><div class="actions"><a class="button" href="/macbackup/privacy">Read privacy policy</a></div><p style="margin-top:25px">Support: <a href="mailto:contact@kevinmuka.dev">contact@kevinmuka.dev</a></p></div>
 </div></section>
 </main>
-<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="/macbackup/privacy">macbackup privacy</a></div></div></footer>
 </body>
 </html>

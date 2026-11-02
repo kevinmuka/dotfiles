@@ -174,3 +174,9 @@ p { margin: 0 0 16px; }
   .footer-inner { flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button, .card, .site-header, .header-inner, .brand, .brand-mark, .top-nav a, .button.link-journey::before, .link-journey .journey-arrow { transition: none; } }
+
+/* Language selector for translated guides. */
+.language-switch { display: inline-flex; gap: 4px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #edf2f9; }
+.language-switch a { padding: 7px 14px; border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; }
+.language-switch a:hover { color: var(--accent); }
+.language-switch a[aria-current="page"] { color: var(--text); background: #fff; box-shadow: 0 1px 6px rgb(20 36 64 / 10%); }
