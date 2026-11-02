@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://dotfiles.kevinmuka.dev/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/privacy/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/docs/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/docs/it/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/nvim/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/nvim/docs/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/nvim/docs/it/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/symlinks/</loc></url>
-  <url><loc>https://dotfiles.kevinmuka.dev/theme/</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/macbackup</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/privacy</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/docs</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/macbackup/docs/it</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/nvim</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/nvim/docs</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/nvim/docs/it</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/symlinks</loc></url>
+  <url><loc>https://dotfiles.kevinmuka.dev/theme</loc></url>
 </urlset>
