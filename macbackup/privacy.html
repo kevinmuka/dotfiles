@@ -4,9 +4,61 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="Privacy policy for the personal macbackup utility and its Google Drive access." name="description"/>
 <title>macbackup privacy policy — kevinmuka / dotfiles</title>
 <link href="https://dotfiles.kevinmuka.dev/macbackup/privacy/" rel="canonical"/>
-<meta content="0; url=/macbackup/privacy" http-equiv="refresh"/>
+<meta content="website" property="og:type"/>
+<meta content="https://dotfiles.kevinmuka.dev/macbackup/privacy/" property="og:url"/>
+<meta content="macbackup privacy policy — kevinmuka / dotfiles" property="og:title"/>
+<meta content="Privacy policy for the personal macbackup utility and its Google Drive access." property="og:description"/>
+<link href="../../style.css" rel="stylesheet"/>
+<link href="../../favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="../../favicon.ico" rel="icon" sizes="any"/>
+<link href="../../apple-touch-icon.png" rel="apple-touch-icon"/>
+<script defer="" src="../../site.js"></script>
 </head>
-<body><p>Moved to <a href="/macbackup/privacy">the macbackup privacy policy</a>.</p></body>
+<body>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav aria-label="Main navigation" class="top-nav"><a aria-current="page" href="/macbackup">macbackup</a><a href="/nvim">Neovim</a><a href="/symlinks">Symlinks</a><a href="/theme">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main><div class="wrap legal page-hero">
+<p class="eyebrow">Updated 30 October 2026</p>
+<h1>Privacy policy</h1>
+<p class="lead">macbackup is a personal backup utility that runs on the owner's Mac and uses rclone to store selected files in the owner's configured cloud accounts.</p>
+<section>
+<h2>Data accessed and purpose</h2>
+<p>The tool accesses local files selected by the owner and the cloud backup files it manages. It uses file names, paths, sizes, timestamps and integrity information to plan and perform transfers, retain previous versions and recover data.</p>
+<p>Google Drive access uses the OAuth scope <code>https://www.googleapis.com/auth/drive.file</code>. Google data is used to create, list, read, update and delete backup files authorized to the application.</p>
+</section>
+<section>
+<h2>Where data is stored</h2>
+<p>Selected backup data is transferred directly from the owner's Mac to the configured storage provider, including Google Drive when enabled. Readable backup files remain readable in the owner's account. Files assigned to the private area are encrypted on the Mac with rclone crypt before upload.</p>
+<p>OAuth credentials are kept in rclone's local configuration. The owner may include that configuration in an encrypted backup. Encryption keys are managed by the owner.</p>
+</section>
+<section>
+<h2>Sharing and use</h2>
+<p>Backup data is processed for the owner's backup and recovery purposes. It is not sold, used for advertising, or used to train machine learning models. Data is sent to the storage providers selected by the owner and remains subject to those providers' policies.</p>
+<p>The public informational pages contain the application description, this policy and a support contact. They do not provide access to the owner's backups, OAuth tokens or encryption keys.</p>
+</section>
+<section>
+<h2>Retention and deletion</h2>
+<p>Backup history is retained until the owner removes it. Excluding a path from future backups does not automatically remove existing copies or previous versions. The owner can manage stored files through the storage provider and supported backup tools.</p>
+<p>Moving a file to a provider's trash is distinct from permanently deleting it. Retention and recovery within a provider's trash follow that provider's policies.</p>
+</section>
+<section>
+<h2>Revoking Google access</h2>
+<p>The owner can revoke the application's Google access through <a href="https://myaccount.google.com/connections">Google Account connections</a>. Revocation stops authorized access by the application; existing backup files remain in the owner's Drive until removed by the owner.</p>
+</section>
+<section>
+<h2>This informational website</h2>
+<p>These static pages have no sign-in forms, analytics scripts or tracking cookies. They are hosted on GitHub Pages. GitHub records visitors' IP addresses for security purposes under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
+</section>
+<section>
+<h2>Contact</h2>
+<p>For privacy questions or changes to the owner's backup configuration, contact <a href="mailto:contact@kevinmuka.dev">contact@kevinmuka.dev</a>.</p>
+</section>
+</div></main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="/macbackup/privacy">macbackup privacy</a></div></div></footer>
+</body>
 </html>
