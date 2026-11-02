@@ -1,0 +1,16 @@
+schema_version = 1
+max_delete = 25
+
+[policy]
+private_directory_names = [".git"]
+ignored_file_names = [".DS_Store", " ← ", ".localized"]
+
+[targets.google]
+enabled = true
+plain = "gdrive:MacBackup/plain"
+private = "gdrive-private:"
+
+[targets.proton]
+enabled = false
+plain = "pdrive:MacBackup/plain"
+private = "pdrive-private:"

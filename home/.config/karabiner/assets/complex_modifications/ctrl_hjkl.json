@@ -10,7 +10,8 @@
               "bundle_identifiers": [
                 "^com\\.googlecode\\.iterm2$",
                 "^com\\.neovide\\.neovide$",
-                "^com\\.github\\.wez\\.wezterm$"
+                "^com\\.github\\.wez\\.wezterm$",
+                "^dev\\.kevinmuka\\.neovim$"
               ],
               "type": "frontmost_application_unless"
             }
@@ -28,7 +29,8 @@
               "bundle_identifiers": [
                 "^com\\.googlecode\\.iterm2$",
                 "^com\\.neovide\\.neovide$",
-                "^com\\.github\\.wez\\.wezterm$"
+                "^com\\.github\\.wez\\.wezterm$",
+                "^dev\\.kevinmuka\\.neovim$"
               ],
               "type": "frontmost_application_unless"
             }
@@ -46,7 +48,8 @@
               "bundle_identifiers": [
                 "^com\\.googlecode\\.iterm2$",
                 "^com\\.neovide\\.neovide$",
-                "^com\\.github\\.wez\\.wezterm$"
+                "^com\\.github\\.wez\\.wezterm$",
+                "^dev\\.kevinmuka\\.neovim$"
               ],
               "type": "frontmost_application_unless"
             }
@@ -64,7 +67,8 @@
               "bundle_identifiers": [
                 "^com\\.googlecode\\.iterm2$",
                 "^com\\.neovide\\.neovide$",
-                "^com\\.github\\.wez\\.wezterm$"
+                "^com\\.github\\.wez\\.wezterm$",
+                "^dev\\.kevinmuka\\.neovim$"
               ],
               "type": "frontmost_application_unless"
             }

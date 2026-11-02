@@ -1,0 +1,3 @@
+# Dati cifrati prima del caricamento.
+/Users/kevinmuka/.ssh
+/Users/kevinmuka/.config/rclone

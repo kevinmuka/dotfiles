@@ -1,0 +1,6 @@
+# Esclusioni concordate per questa prima selezione. Karabiner è incluso.
+/Users/kevinmuka/.config/gh
+/Users/kevinmuka/.config/github-copilot
+/Users/kevinmuka/.config/configstore
+/Users/kevinmuka/.config/opencode
+/Users/kevinmuka/.config/joplin-desktop

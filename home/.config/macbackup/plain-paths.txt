@@ -1,0 +1,10 @@
+# File consultabili. I percorsi privati ed esclusi prevalgono.
+/Users/kevinmuka/Desktop
+/Users/kevinmuka/Documents
+/Users/kevinmuka/.dotfiles
+/Users/kevinmuka/.config
+/Users/kevinmuka/.gitconfig
+/Users/kevinmuka/.zshrc
+/Users/kevinmuka/.zprofile
+/Users/kevinmuka/.zshenv
+/Users/kevinmuka/.zsh

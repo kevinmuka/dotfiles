@@ -304,7 +304,7 @@ Il submodule e' dichiarato in [`.gitmodules`](./.gitmodules):
 ```ini
 [submodule "home/.config/nvim"]
 	path = home/.config/nvim
-	url = https://github.com/03kev/nvim.git
+	url = https://github.com/kevinmuka/nvim.git
 ```
 
 Comandi utili:
