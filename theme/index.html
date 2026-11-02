@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Shared color tokens for Zsh, WezTerm and Neovim, plus related Mac workflow modules.">
+<title>Theme &amp; terminal — kevinmuka / dotfiles</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav class="top-nav" aria-label="Main navigation"><a href="../">Overview</a><a href="../macbackup/">macbackup</a><a href="../nvim/">Neovim</a><a href="../symlinks/">Symlinks</a><a href="../theme/" aria-current="page">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main>
+<div class="wrap page-hero">
+<p class="eyebrow">Theme / terminal / keyboard</p>
+<h1>A consistent workspace, across tools.</h1>
+<p class="lead">Color tokens live in one place and are loaded by the shell and Lua configurations. WezTerm follows the same light or dark choice, while Neovim can read that choice when it starts.</p>
+<div class="actions"><a class="button primary" href="https://github.com/kevinmuka/dotfiles/blob/main/README.md">Read the setup guide ↗</a></div>
+</div>
+<section class="section"><div class="wrap">
+<div class="section-head"><div><p class="eyebrow">Shared state</p><h2>One palette, several consumers.</h2></div><p>The files under home/.config/theme supply base tokens to Zsh, Neovim and WezTerm.</p></div>
+<div class="flow">
+<div class="flow-step"><span class="index">SOURCE / 01</span><h3>Color tokens</h3><p>colors.env defines the base tokens; colors.zsh and colors.lua expose them to shell and Lua code.</p></div>
+<div class="flow-step"><span class="index">SHELL / 02</span><h3>Theme command</h3><p>theme light and theme dark update runtime state, shell colors and the theme signal shared with WezTerm.</p></div>
+<div class="flow-step"><span class="index">APPS / 03</span><h3>Editor &amp; terminal</h3><p>Neovim reads NVIM_THEME; WezTerm uses the shared palette and theme_mode for tabs and panes.</p></div>
+</div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">WezTerm</p><h2>More than a color scheme.</h2><p class="lead">The terminal configuration groups palette, UI, keys and plugins in separate Lua modules. smart-splits connects its panes with the editor.</p><div class="actions"><a class="button" href="https://github.com/kevinmuka/dotfiles/tree/main/home/.config/wezterm">Explore WezTerm source ↗</a></div></div>
+<div class="code-window"><div class="label">runtime example</div><pre>theme dark
+theme light
+
+# Optional editor override
+NVIM_THEME=light nvim
+
+# Theme state
+~/.local/state/dotfiles/theme</pre></div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">Other modules</p><h2>Keyboard and supporting tools.</h2><p>Karabiner holds the macOS-only key rules and automatic configuration snapshots. tmux, IdeaVim and custom scripts are documented separately in the repository.</p><div class="actions"><a class="button" href="https://github.com/kevinmuka/dotfiles/blob/main/docs/MODULES.md">Read module notes ↗</a></div></div>
+<div class="panel"><span class="chip blue">MACOS FIRST</span><h3 style="margin-top:22px">Review before copying</h3><p>Some Karabiner rules call AppleScript, macOS tools or absolute paths. The repository documentation flags these as settings to review on another machine.</p></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
+</body>
+</html>

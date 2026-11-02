@@ -1,0 +1,1819 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Full macbackup documentation in Italian, including selection rules, cloud transfers, history, recovery and safety boundaries.">
+<title>macbackup documentation — kevinmuka / dotfiles</title>
+<link rel="stylesheet" href="../../style.css">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="../../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav class="top-nav" aria-label="Main navigation"><a href="../../">Overview</a><a href="../../macbackup/" aria-current="page">macbackup</a><a href="../../nvim/">Neovim</a><a href="../../symlinks/">Symlinks</a><a href="../../theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main><div class="wrap doc-intro"><p class="eyebrow">macbackup / documentation · italiano</p><p>Readable snapshot of the source guide. For the newest edits, <a href="https://github.com/kevinmuka/dotfiles/blob/main/docs/macbackup.md">open the Markdown on GitHub ↗</a>.</p></div>
+<div class="wrap document-layout">
+<aside class="doc-nav"><p class="eyebrow">On this page</p><nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#macbackup-guida-operativa-e-progetto-del-backup"
+id="toc-macbackup-guida-operativa-e-progetto-del-backup">macbackup:
+guida operativa e progetto del backup</a>
+<ul>
+<li><a href="#avvio-della-versione-locale"
+id="toc-avvio-della-versione-locale">Avvio della versione
+locale</a></li>
+<li><a href="#configurazione-dei-trasferimenti"
+id="toc-configurazione-dei-trasferimenti">Configurazione dei
+trasferimenti</a></li>
+<li><a href="#accesso-google-e-problemi-oauth"
+id="toc-accesso-google-e-problemi-oauth">Accesso Google e problemi
+OAuth</a></li>
+<li><a href="#autocompletamento-zsh"
+id="toc-autocompletamento-zsh">Autocompletamento Zsh</a></li>
+<li><a href="#1-obiettivo-e-limiti" id="toc-1-obiettivo-e-limiti">1.
+Obiettivo e limiti</a></li>
+<li><a href="#2-posizione-sul-mac-e-rapporto-con-git"
+id="toc-2-posizione-sul-mac-e-rapporto-con-git">2. Posizione sul Mac e
+rapporto con Git</a></li>
+<li><a
+href="#3-configurazione-quattro-elenchi-e-un-file-di-impostazioni"
+id="toc-3-configurazione-quattro-elenchi-e-un-file-di-impostazioni">3.
+Configurazione: quattro elenchi e un file di impostazioni</a></li>
+<li><a href="#4-struttura-delle-destinazioni"
+id="toc-4-struttura-delle-destinazioni">4. Struttura delle
+destinazioni</a></li>
+<li><a href="#5-cosa-accade-durante-il-backup"
+id="toc-5-cosa-accade-durante-il-backup">5. Cosa accade durante il
+backup</a></li>
+<li><a href="#6-comandi-proposti" id="toc-6-comandi-proposti">6. Comandi
+proposti</a></li>
+<li><a href="#7-sicurezza-operativa-e-recuperabilità"
+id="toc-7-sicurezza-operativa-e-recuperabilità">7. Sicurezza operativa e
+recuperabilità</a></li>
+<li><a href="#8-cosa-rclone-fa-già-e-cosa-deve-fare-macbackup"
+id="toc-8-cosa-rclone-fa-già-e-cosa-deve-fare-macbackup">8. Cosa rclone
+fa già e cosa deve fare macbackup</a></li>
+<li><a href="#9-verifiche-già-fatte-e-verifiche-necessarie"
+id="toc-9-verifiche-già-fatte-e-verifiche-necessarie">9. Verifiche già
+fatte e verifiche necessarie</a></li>
+<li><a href="#10-decisioni-operative-e-lavoro-rimanente"
+id="toc-10-decisioni-operative-e-lavoro-rimanente">10. Decisioni
+operative e lavoro rimanente</a></li>
+<li><a href="#11-fonti-ufficiali" id="toc-11-fonti-ufficiali">11. Fonti
+ufficiali</a></li>
+</ul></li>
+</ul>
+</nav></aside>
+<article class="doc-content">
+
+<h1 id="macbackup-guida-operativa-e-progetto-del-backup">macbackup:
+guida operativa e progetto del backup</h1>
+<p>Documento aggiornato il 2 novembre 2026.</p>
+<p><strong>Stato: versione 0.9.5.</strong> Sono disponibili
+<code>init</code>, <code>check</code>, <code>explain</code>,
+<code>layout</code>, <code>preview --local</code>,
+<code>check --remote</code>, <code>preview --target</code>,
+<code>run --target</code>, <code>status</code>,
+<code>restore-icon</code>, <code>forget</code>, <code>versions</code>,
+<code>restore</code> per un file e <code>verify</code> della copia
+corrente. Le funzioni remote usano rclone, comprese cifratura e
+archiviazione delle vecchie versioni. Le destinazioni sono disabilitate
+nella configurazione iniziale. Non sono ancora disponibili il ripristino
+di interi alberi e il montaggio del disco. <code>restore-icon</code>
+recupera soltanto un'icona da un file locale.</p>
+<p>È disponibile anche il completamento nativo per Zsh di comandi,
+opzioni e percorsi, integrato nei dotfiles.</p>
+<p>Il trasferimento è stato collaudato con veri comandi rclone su
+remotes locali e crypt sintetici, e poi su Google Drive con soli file
+fittizi in cartelle di test separate. Su Google sono riusciti copia
+consultabile, recupero del file cifrato, esclusione del file non
+autorizzato e recupero di una versione storica cifrata. Il primo backup
+reale Google è stato avviato e poi interrotto su richiesta dell’utente:
+non è completo. Proton non è ancora configurato. Alla verifica
+immediatamente successiva risultavano 216 file plain per 429.002.179
+byte e nessun file nell’area private. <code>status</code> non registrava
+una run conclusa. Le sezioni indicate come future non sono funzionalità
+già presenti.</p>
+<h2 id="avvio-della-versione-locale">Avvio della versione locale</h2>
+<p>Tutti i comandi richiedono Python 3.11 o successivo, senza pacchetti
+aggiuntivi. Sul Mac è stato verificato Python 3.14.0 in
+<code>/opt/homebrew/bin/python3</code>. Il file eseguibile usa
+<code>python3</code> disponibile nel PATH; le future automazioni
+richiederanno una configurazione esplicita dell'interprete.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> <span class="at">--version</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> <span class="at">--help</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> init</span></code></pre></div>
+<p><code>init</code> crea quattro elenchi e <code>settings.toml</code>:
+i tre elenchi di percorsi sono vuoti salvo esempi commentati, mentre
+explicit-only contiene <code>.env</code> e <code>.env.*</code>; entrambe
+le destinazioni sono disabilitate. Non sovrascrive una configurazione
+esistente, nemmeno parziale. I file nuovi hanno permessi 600 e la nuova
+directory 700. Se l'inizializzazione è già stata eseguita, non serve
+ripeterla: l'aggiornamento alla versione 0.2 aggiunge il solo
+settings.toml se assente, senza cambiare gli elenchi.</p>
+<p>Per modificare gli elenchi si usa il proprio editor, quindi:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> check</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> explain <span class="st">&quot;/Users/kevinmuka/Desktop/progetto/.env&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> layout  <span class="co"># nella cartella del progetto</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> layout <span class="st">&quot;/Users/kevinmuka/Desktop/progetto&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> preview <span class="at">--local</span></span></code></pre></div>
+<p><code>check</code> scansiona le sorgenti selezionate usando nomi e
+metadati; non legge il contenuto dei file da salvare. Legge invece il
+contenuto dei quattro elenchi di configurazione. <code>explain</code>
+controlla un solo percorso, anche ipotetico o attualmente assente; non
+certifica che l'intera selezione sia valida. Per esempio, se nessuna
+directory è ancora inclusa, un <code>.env</code> può risultare
+semplicemente «non selezionato».</p>
+<p><code>preview --local</code> mostra le classificazioni locali e i
+motivi degli scarti. Non confronta il cloud e non stima quanti byte sarà
+necessario trasferire. Se trova errori, non presenta la scansione
+parziale come un piano utilizzabile. Per le directory escluse mostra una
+voce relativa al sottoalbero senza visitarne tutti i file: il numero
+delle voci saltate non è un conteggio esatto di tutti i file
+esclusi.</p>
+<p><code>layout</code> usa la directory corrente se non gli passi un
+percorso; per esempio, dentro <code>~/Desktop/project</code> può
+mostrare <code>PRIVATE /Users/kevinmuka/Desktop/project/.git</code>.
+Richiede una directory locale selezionata in <code>plain</code> e mostra
+le parti al suo interno che sono instradate in <code>private</code>. Per
+ciascuna mostra soltanto la radice del sottoalbero, il numero di
+elementi selezionati e i byte locali; non elenca i nomi di ogni file
+privato. Con <code>--json</code> aggiunge il percorso logico
+<code>private/current/...</code> e si può usare in altri strumenti.
+Esegue una scansione locale completa, senza accesso al cloud. Non mostra
+vecchie copie in chiaro o nello storico, né directory private vuote, che
+il backup non conserva come oggetti autonomi. Se la scansione trova
+errori, non mostra un risultato parziale come valido.</p>
+<p>I quattro comandi di lettura supportano <code>--json</code>.
+<code>--config-dir</code> sostituisce <code>~/.config/macbackup</code>
+per i quattro elenchi e <code>settings.toml</code>; non cambia le
+sorgenti dei dati, il file di stato sotto
+<code>~/.local/state/macbackup</code> o la configurazione delle
+credenziali rclone. La directory alternativa si specifica prima del
+sottocomando:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> <span class="at">--config-dir</span> <span class="st">&quot;/percorso/assoluto/configurazione&quot;</span> check <span class="at">--json</span></span></code></pre></div>
+<p>Codici di uscita: 0 per il completamento del controllo richiesto, 1
+per errori rilevati nelle sorgenti o conflitti, 2 per errori di
+sintassi, configurazione o utilizzo. Un controllo con elenchi vuoti
+restituisce 0 con un avviso: non è un backup eseguito.</p>
+<p>I collegamenti simbolici vengono identificati come elementi da
+conservare, senza attraversarne le directory di destinazione. I file
+speciali scoperti durante la scansione vengono saltati con avviso; se
+selezionati come sorgenti esatte producono errore. La scansione blocca
+conflitti di identità fra file normali e privati, e alias osservati di
+file protetti che ne aggirerebbero l'inclusione esatta. Non riconosce
+copie indipendenti del medesimo contenuto.</p>
+<p>Il selettore protegge le posizioni standard della configurazione
+rclone, anche quando collegate a un percorso reale diverso, e lo stato
+operativo standard di macbackup. L'uso di un percorso rclone
+personalizzato richiede di includerlo esplicitamente nelle protezioni:
+non è ancora rilevato automaticamente dal selettore. Il controllo
+dell'identità attesa dei volumi esterni non è implementato; attualmente
+una sorgente mancante produce errore, ma un mount errato non è
+certificato.</p>
+<p>Per eseguire i test dal repository dotfiles, senza creare cache
+Python:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-B</span> <span class="at">-m</span> unittest discover <span class="at">-s</span> /Users/kevinmuka/.dotfiles/tests <span class="at">-p</span> <span class="st">&#39;test_macbackup*.py&#39;</span> <span class="at">-v</span></span></code></pre></div>
+<h2 id="configurazione-dei-trasferimenti">Configurazione dei
+trasferimenti</h2>
+<p><code>/Users/kevinmuka/.config/macbackup/settings.toml</code> non
+contiene password:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode toml"><code class="sourceCode toml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="dt">schema_version</span> <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">max_delete</span> <span class="op">=</span> <span class="dv">25</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">[policy]</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="dt">private_directory_names</span> <span class="op">=</span> <span class="op">[</span><span class="st">&quot;.git&quot;</span><span class="op">]</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dt">ignored_file_names</span> <span class="op">=</span> <span class="op">[</span><span class="st">&quot;.DS_Store&quot;</span><span class="op">,</span> <span class="st">&quot; ← &quot;</span><span class="op">,</span> <span class="st">&quot;.localized&quot;</span><span class="op">]</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="kw">[targets.google]</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="dt">enabled</span> <span class="op">=</span> <span class="cn">true</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="dt">plain</span> <span class="op">=</span> <span class="st">&quot;gdrive:MacBackup/plain&quot;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="dt">private</span> <span class="op">=</span> <span class="st">&quot;gdrive-private:&quot;</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="kw">[targets.proton]</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="dt">enabled</span> <span class="op">=</span> <span class="cn">false</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="dt">plain</span> <span class="op">=</span> <span class="st">&quot;pdrive:MacBackup/plain&quot;</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="dt">private</span> <span class="op">=</span> <span class="st">&quot;pdrive-private:&quot;</span></span></code></pre></div>
+<p>Il remote gdrive deve essere di tipo drive e usare il tuo client
+OAuth. Per il backup dedicato si usa lo scope drive.file: i file già
+esistenti e creati da altre app non saranno automaticamente accessibili.
+Il remote gdrive-private deve essere di tipo crypt e avvolgere
+<code>gdrive:MacBackup/private</code>, con cifratura standard dei nomi e
+delle directory. Conservare password ed eventuale salt anche nel gestore
+di password, recuperabile senza questo Mac.</p>
+<h3 id="cosa-rappresentano-gdrive-e-gdrive-private">Cosa rappresentano
+gdrive e gdrive-private</h3>
+<p>I due nomi sono due modi di accedere allo stesso account Google: non
+sono due servizi o due copie indipendenti. <code>gdrive:</code> è il
+collegamento a Drive; non punta intrinsecamente alla cartella plain. È
+macbackup, attraverso settings.toml, a scegliere
+<code>gdrive:MacBackup/plain</code> come destinazione dei file
+consultabili. <code>gdrive-private:</code> applica invece la cifratura
+rclone alla cartella fisica <code>gdrive:MacBackup/private</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Percorso usato da macbackup</th>
+<th>Posizione su Google Drive</th>
+<th>Cosa si vede dal telefono o dal sito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gdrive:MacBackup/plain/current</code></td>
+<td><code>My Drive/MacBackup/plain/current</code></td>
+<td>File consultabili con percorsi originali sotto
+<code>Users/...</code></td>
+</tr>
+<tr>
+<td><code>gdrive:MacBackup/plain/history/RUN_ID</code></td>
+<td><code>My Drive/MacBackup/plain/history/RUN_ID</code></td>
+<td>Vecchie versioni consultabili, organizzate per esecuzione</td>
+</tr>
+<tr>
+<td><code>gdrive-private:current</code></td>
+<td>Dentro <code>My Drive/MacBackup/private</code></td>
+<td>Nomi e contenuti cifrati; anche il nome current è cifrato</td>
+</tr>
+<tr>
+<td><code>gdrive-private:history/RUN_ID</code></td>
+<td>Dentro <code>My Drive/MacBackup/private</code></td>
+<td>Vecchie versioni cifrate, con nomi delle directory cifrati</td>
+</tr>
+<tr>
+<td><code>gdrive:MacBackup/plain/macos-icons/current</code></td>
+<td><code>My Drive/MacBackup/plain/macos-icons/current</code></td>
+<td>File icon.json con i dati necessari al recupero delle icone su
+Mac</td>
+</tr>
+<tr>
+<td><code>gdrive-private:macos-icons/current</code></td>
+<td>Dentro <code>My Drive/MacBackup/private</code></td>
+<td>Gli stessi dati delle icone per le cartelle private, cifrati</td>
+</tr>
+</tbody>
+</table>
+<p>La cartella esterna <code>private</code> mantiene questo nome
+leggibile; la cifratura si applica a ciò che viene scritto attraverso il
+remote crypt al suo interno. Usare direttamente
+<code>gdrive:MacBackup/private/...</code> per un caricamento aggirerebbe
+la cifratura: per i dati privati va sempre usato
+<code>gdrive-private:</code>. Nell'app Google Drive sul telefono si
+possono aprire i file plain supportati dall'app; i file private
+richiedono un client compatibile con rclone crypt e le chiavi
+corrette.</p>
+<p>Entrambe le aree consumano lo stesso spazio Google. La futura copia
+su Proton richiederà collegamenti separati, <code>pdrive</code> e
+<code>pdrive-private</code>, e sarà una seconda destinazione
+indipendente.</p>
+<p>Per Proton Pass, la voce di recupero suggerita si chiama
+<code>MacBackup — Google Drive — Crypt key</code>. Crearla come elemento
+personalizzato tramite Altro → Inizia da zero. I campi
+<code>Encryption password</code> e <code>Salt / password2</code> sono
+nascosti e contengono le due stringhe originali generate da rclone, non
+il loro offuscamento nella configurazione. I campi testuali sono
+<code>Remote name = gdrive-private</code>,
+<code>Storage path = gdrive:MacBackup/private</code>,
+<code>Filename encryption = standard</code> e
+<code>Directory name encryption = true</code>. Conservare separatamente
+Client ID e Client secret nella voce
+<code>MacBackup — Google OAuth</code>; il secondo è un campo nascosto.
+Non servono codici TOTP per rappresentare queste due password
+statiche.</p>
+<p>Abilitare una destinazione solo dopo aver configurato i due remotes,
+rivisto gli elenchi e completato la prova di recupero con file
+sintetici. Le operazioni di esempio successive diventano eseguibili dopo
+quell'abilitazione. <code>--target all</code> richiede entrambe le
+destinazioni abilitate: non salta silenziosamente Proton se manca.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> check <span class="at">--remote</span> <span class="at">--target</span> google</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> preview <span class="at">--target</span> google</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> run <span class="at">--target</span> google</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> status</span></code></pre></div>
+<p><code>check --remote</code> legge gli inventari e controlla tipi e
+capacità necessari; non scrive sul cloud e non prova un recupero.
+<code>preview --target</code> legge anche i contenuti locali necessari
+ai confronti di integrità ed esegue il dry-run di rclone: non modifica
+il cloud. Mostra quanti file sono selezionati e quanti verrebbero
+archiviati perché cancellati; non mostra ancora un elenco completo di
+tutte le sostituzioni.</p>
+<p><code>run</code> trasferisce soltanto i percorsi ammessi, conserva le
+copie sostituite o cancellate sotto history/RUN_ID e registra gli esiti
+distinti delle aree. Non esegue pulizie dello storico.
+<code>max_delete</code> è il limite di archiviazioni dovute a
+cancellazioni per area e per destinazione: viene controllato prima dei
+trasferimenti e passato anche a rclone. Il valore iniziale 25 va rivisto
+prima dell'automazione; non è una politica di conservazione.</p>
+<p>Un percorso incluso singolarmente deve esistere: se manca una
+sorgente obbligatoria, la run si ferma prima dei trasferimenti.
+L'archiviazione automatica per cancellazione riguarda invece i file
+mancanti dentro una cartella selezionata che esiste ancora. Per esempio,
+cancellare <code>.ssh/config</code> può archiviarne la copia se
+<code>.ssh</code> è selezionata ed esiste; la scomparsa dell'intera
+<code>.ssh</code> blocca il backup. Togliere una voce dagli elenchi
+interrompe la gestione futura di quella voce e conserva le copie
+cloud.</p>
+<p>Le operazioni remote condividono un blocco locale per impedire
+esecuzioni contemporanee. Gli elenchi temporanei e lo stato sono
+protetti e rimangono fuori dal repository. Non sono conservati contenuti
+dei file nei registri. <code>status</code> descrive l'ultima run
+richiesta, anche parziale: non certifica ogni destinazione da sempre,
+non verifica la raggiungibilità attuale e non implica un controllo
+completo dello storico. Durante <code>run</code>, rclone mostra nel
+terminale l’avanzamento della fase in corso; <code>status</code> si
+aggiorna soltanto al termine della run. Un’interruzione durante la fase
+di pianificazione può ancora non produrre un nuovo stato.</p>
+<p>Nelle aree normali si richiedono hash disponibili sul backend. Per le
+aree crypt il confronto viene effettuato con cryptcheck: in questo modo
+una modifica di contenuto della stessa dimensione e con lo stesso orario
+non viene persa. Vengono trasferiti e archiviati soltanto i file privati
+nuovi, diversi o da rimuovere da current; una run senza modifiche non
+deve generare nuove copie storiche. Se il confronto cifrato non è
+completo, l'operazione sull'area viene bloccata.</p>
+<p>Il trasferimento salva file, rappresentazioni dei collegamenti e dati
+delle icone Finder nelle aree dedicate. Non conserva ancora le directory
+vuote prive di icone o l'intero insieme dei metadati macOS: ACL,
+attributi estesi e resource fork degli altri file non sono coperti da
+questa funzione. Non attivare ancora un backup reale di database aperti
+senza una procedura di esportazione o chiusura appropriata.</p>
+<h3 id="icone-personalizzate-delle-cartelle-macos">Icone personalizzate
+delle cartelle macOS</h3>
+<p>La scelta concordata è conservare le icone, senza escludere i file
+<code>Icon\r</code>. In questo nome <code>\r</code> indica un vero
+carattere di ritorno carrello. Il selettore riconosce questo caso
+specifico; gli altri nomi con caratteri di controllo rimangono
+bloccati.</p>
+<p>Il contenuto ordinario di Icon\r può essere vuoto: l'immagine spesso
+risiede nel resource fork. Per ogni icona selezionata viene quindi
+generato un piccolo snapshot JSON che contiene i dati del file, gli
+attributi <code>com.apple.ResourceFork</code> e
+<code>com.apple.FinderInfo</code> del file e il FinderInfo della
+cartella. Il percorso sorgente compare nel JSON soltanto come
+informazione, senza essere usato come destinazione dal comando di
+recupero. Non vengono letti o impacchettati gli altri documenti della
+cartella: un .env non autorizzato resta escluso.</p>
+<p>Le icone vengono recuperate su macOS; l'app Google Drive sul telefono
+usa la propria presentazione delle cartelle. Una prova con un'icona
+valida generata tramite AppKit ha confrontato l'immagine renderizzata
+prima e dopo il recupero, trovandole uguali. Non è stata effettuata una
+verifica visiva dentro una finestra Finder.</p>
+<p>Uno snapshot per la cartella
+<code>/Users/kevinmuka/Desktop/Photography</code> viene salvato in
+<code>plain/macos-icons/current/Users/kevinmuka/Desktop/Photography/icon.json</code>.
+Le versioni precedenti stanno in
+<code>plain/macos-icons/history/RUN_ID/.../icon.json</code>. Per una
+cartella privata la stessa struttura è sotto il remote crypt, quindi
+anche i dati delle icone sono cifrati.</p>
+<p>Gli snapshot seguono inclusioni ed esclusioni come i file ordinari.
+Una nuova esclusione conserva la copia remota esistente. La rimozione
+locale di un'icona dentro una cartella ancora selezionata archivia la
+vecchia copia; un'icona invariata non deve creare nuove versioni
+storiche. Il limite max_delete comprende file e snapshot delle icone per
+ciascuna area. Gli snapshot temporanei sono nella directory di stato
+protetta e vengono rimossi alla fine dell'operazione. Un file o un
+singolo attributo icona oltre 64 MiB blocca la relativa area con errore,
+senza ometterlo silenziosamente.</p>
+<p><code>check</code> conta le icone usando i soli nomi e metadati
+ordinari; non legge il resource fork. La lettura dei contenuti necessari
+avviene durante l'anteprima remota o il trasferimento. La stima dei byte
+della scansione locale non include i resource fork né l'aumento di
+dimensione dovuto alla codifica JSON.</p>
+<p>Per provare un recupero, dopo il primo caricamento scaricare uno
+snapshot e applicarlo a una cartella di prova esistente. Esempio per una
+normale cartella:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> <span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/Downloads/macbackup-restore/Photography&quot;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rclone</span> copyto <span class="dt">\</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;gdrive:MacBackup/plain/macos-icons/current/Users/kevinmuka/Desktop/Photography/icon.json&quot;</span> <span class="dt">\</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/Downloads/macbackup-restore/icon.json&quot;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> restore-icon <span class="dt">\</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--file</span> <span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/Downloads/macbackup-restore/icon.json&quot;</span> <span class="dt">\</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">--folder</span> <span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/Downloads/macbackup-restore/Photography&quot;</span></span></code></pre></div>
+<p>Per le icone private il download si effettua da
+<code>gdrive-private:macos-icons/current/.../icon.json</code>. Il
+comando restore-icon non accede al cloud, non legge gli elenchi e non
+scrive nel percorso sorgente registrato nello snapshot. La destinazione
+è soltanto la cartella indicata con --folder, che deve esistere e non
+essere un collegamento simbolico. Ripristina il file Icon\r e il bit
+Finder che attiva l'icona personalizzata, preservando gli altri
+indicatori Finder della cartella. I documenti della cartella restano
+intatti.</p>
+<p>Se un'icona è già presente, il comando si ferma. Per sostituire
+esplicitamente soltanto quell'icona si aggiunge <code>--replace</code>.
+Il comando supporta --json e l'autocompletamento di tutte le opzioni.
+Come le altre operazioni su filesystem, il recupero non promette una
+transazione atomica tra file e metadati: un errore durante
+l'applicazione dei metadati va controllato e può richiedere di ripetere
+con --replace.</p>
+<h2 id="accesso-google-e-problemi-oauth">Accesso Google e problemi
+OAuth</h2>
+<p>La configurazione Google si effettua nel proprio terminale con
+<code>rclone config</code>, inserendo Client ID e Client secret. Non
+condividere il riepilogo: può contenere token. Il client deve essere
+Desktop app, il remote si chiama gdrive e lo scope è drive.file. Un
+errore «client_secret is missing» richiede di modificare il remote e
+compilare il campo Client secret, non di ricreare il progetto
+Google.</p>
+<p>Se l'app è in Testing, il proprio account deve essere aggiunto in
+Google Auth Platform → Audience → Test users. Per un backup automatico
+duraturo occorre poi risolvere il limite di scadenza settimanale degli
+accessi delle app in Testing, valutando il passaggio a Production per
+uso personale; non è una modifica automatica eseguita dallo script.
+Nella schermata Audience mostrata il 30 ottobre lo stato era ancora
+Testing: il messaggio Google ha confermato che per Production servono un
+nome valido, email di supporto, homepage e privacy policy. I primi due
+erano già presenti; occorrono due URL reali e pubblici, senza inventare
+indirizzi né ampliare le autorizzazioni Drive. Logo e termini di
+servizio non sono stati richiesti da quel messaggio. Riferimenti: <a
+href="https://developers.google.com/workspace/guides/configure-oauth-consent">configurazione
+del consenso</a>, <a
+href="https://developers.google.com/identity/protocols/oauth2#expiration">scadenza
+dei refresh token in Testing</a>, <a
+href="https://rclone.org/drive/#making-your-own-client-id">passaggio a
+Production nella guida rclone</a>.</p>
+<h3 id="pagine-pubbliche-per-il-consenso-google">Pagine pubbliche per il
+consenso Google</h3>
+<p>Con l'autorizzazione dell'utente è stato creato direttamente su
+GitHub il branch <a
+href="https://github.com/kevinmuka/dotfiles/tree/gh-pages">gh-pages di
+kevinmuka/dotfiles</a>. GitHub Pages pubblica quel branch dalla sua
+radice. Il sito è stato verificato con risposte HTTP 200 e confronto dei
+contenuti pubblici con i file preparati. Il branch contiene soltanto
+cinque file statici:</p>
+<pre class="text"><code>index.html
+macbackup/index.html
+macbackup/privacy.html
+macbackup/style.css
+.nojekyll</code></pre>
+<p>La radice <a
+href="https://kevinmuka.github.io/dotfiles/">kevinmuka.github.io/dotfiles/</a>
+può essere usata in futuro per documentare altri strumenti dei dotfiles.
+La sezione macbackup mantiene URL distinti e stabili:</p>
+<table>
+<thead>
+<tr>
+<th>Campo in Google Auth Platform → Branding</th>
+<th>Valore</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Application home page</td>
+<td><code>https://kevinmuka.github.io/dotfiles/macbackup/</code></td>
+</tr>
+<tr>
+<td>Application privacy policy link</td>
+<td><code>https://kevinmuka.github.io/dotfiles/macbackup/privacy.html</code></td>
+</tr>
+<tr>
+<td>Authorised domains</td>
+<td><code>kevinmuka.github.io</code></td>
+</tr>
+</tbody>
+</table>
+<p>Dopo il salvataggio si torna in Audience → Publish app. Se si
+cambiano gli URL in futuro, bisogna aggiornare Branding; se cambia il
+dominio, anche Authorised domains. Il passaggio a Production riguarda la
+disponibilità del client OAuth e il limite di Testing: non condivide le
+cartelle del backup e non pubblica token o chiavi.</p>
+<p>Il branch è stato creato sul remoto tramite API, senza cambiare il
+checkout locale <code>/Users/kevinmuka/.dotfiles</code> e senza
+pubblicare le modifiche locali del programma su main. Un branch è una
+versione del repository, non una nuova directory sul Mac. Per vederne il
+riferimento nella copia locale si può eseguire
+<code>git -C /Users/kevinmuka/.dotfiles fetch origin</code>; questo non
+cambia il branch attualmente aperto. Per modificare gh-pages sul Mac è
+opportuno usare una copia o un worktree separato: cambiare branch nel
+checkout che alimenta i collegamenti dei dotfiles cambierebbe anche
+quelle configurazioni attive. Le pagine pubbliche includono l'email di
+supporto concordata, non la configurazione del backup.</p>
+<p>Dopo aver confermato lo stato In production, occorre ricollegare il
+remote nel proprio terminale con
+<code>rclone config reconnect gdrive:</code> per ottenere una nuova
+autorizzazione nel nuovo stato. Client ID, Client secret e chiavi crypt
+rimangono quelli configurati; non vanno rigenerati. L'utente ha
+confermato di aver pubblicato l'app e ripetuto la riconnessione. Subito
+dopo <code>rclone about gdrive:</code> e
+<code>macbackup check --remote --target google</code> sono riusciti in
+sola lettura. Questi controlli verificano l'accesso, non leggono lo
+stato di pubblicazione da Google Auth Platform.</p>
+<p>Il 30 ottobre 2026 la lettura della quota del remote gdrive è
+riuscita con scope drive.file; la configurazione locale risultava
+protetta con permessi 600. Questa prova non ha elencato o scaricato i
+file dell'account.</p>
+<p>È poi stata completata una prova end-to-end nello stesso account,
+limitata a file sintetici sotto namespace connection-tests distinti dai
+percorsi del backup reale. Sono state verificate anche modifiche della
+stessa dimensione con lo stesso orario, in entrambe le aree. I namespace
+della prova 0.2 sono stati rimossi dall'area attiva di Drive; il cestino
+non è stato svuotato. Non è stata eseguita alcuna cancellazione dei tuoi
+file. Il resoconto operativo è conservato fuori dal repository. Prima
+del primo backup reale rimangono da completare la revisione
+dell’anteprima e l’abilitazione della destinazione Google. Proton resta
+da configurare per la seconda copia.</p>
+<p>Il collaudo Google della versione 0.3 ha inoltre recuperato le icone
+plain e cifrate, conservato i file dopo una nuova esclusione e
+archiviato file e icone rimossi da cartelle ancora selezionate. È stato
+verificato anche il blocco per una sorgente esatta mancante. La suite
+locale comprende 122 test riusciti, oltre alla prova di resa dell'icona
+tramite AppKit. Nella pulizia 0.3 i file sintetici sono stati spostati
+nel cestino; la rimozione di alcune cartelle residue ha nuovamente
+restituito errori, registrati separatamente dal buon esito del backup.
+Il resoconto di pulizia è fuori dal repository e non viene confuso con
+l'esito delle prove di recupero.</p>
+<p>Dopo il consenso esplicito dell'utente, la pulizia dei due namespace
+0.3 autorizzati è stata completata eliminando i singoli elementi dal
+basso verso l'alto tramite i loro ID Google Drive. Prima della rimozione
+sono stati verificati tutti i discendenti, compresi quelli nel cestino:
+155 elementi totali, con nove file di test, tutti posseduti dall'account
+e autorizzati all'app. I due ID radice sono stati poi verificati assenti
+e le cartelle di test rimaste vuote sono state rimosse. Lo scope è
+rimasto drive.file e il cestino complessivo non è stato svuotato; le
+vecchie prove 0.2 già nel cestino non rientravano in questa
+autorizzazione definitiva. Sono stati rimossi anche i fixture locali
+sintetici. Questa pulizia mirata precedeva l’implementazione generale
+del comando forget e non ne era una prova.</p>
+<h3 id="permessi-di-cancellazione-e-limite-osservato">Permessi di
+cancellazione e limite osservato</h3>
+<p><code>drive.file</code> è un permesso di lettura e scrittura per i
+file autorizzati all'applicazione, non un permesso di sola lettura. Una
+prova separata, su nuove cartelle sintetiche sia plain sia crypt, ha
+verificato con successo: creazione e rimozione di una cartella vuota;
+spostamento nel cestino di un albero contenente un file; rimozione del
+file seguita dalla rimozione delle cartelle rimaste vuote. Lo scope
+completo <code>drive</code> non è stato richiesto.</p>
+<p>La pulizia delle vecchie cartelle di prova ha inizialmente restituito
+<code>403 appNotAuthorizedToChild</code> per alcuni alberi profondi. Il
+controllo dei metadati dell'area normale ha trovato
+<code>isAppAuthorized=true</code> in tutti gli elementi visibili,
+inclusi i discendenti già nel cestino. I controlli finali hanno poi
+confermato l'assenza di entrambi i namespace di prova dall'area attiva.
+La causa esatta dei rifiuti intermedi non è stata isolata; non
+considerare il successo finale come una garanzia di cancellazione di
+qualsiasi albero. Non è stato necessario richiedere lo scope
+completo.</p>
+<p>Con le impostazioni usate nelle prime prove, rclone spostava gli
+elementi nel cestino Google; non era una cancellazione definitiva e il
+cestino dell’account non veniva svuotato. La versione 0.4 di
+<code>forget</code> distingue <code>trash</code> da
+<code>permanent</code> e cerca anche le copie storiche del backup; non
+esplora automaticamente revisioni native o elementi già nel cestino.</p>
+<p>Il montaggio in sola lettura, quando verrà aggiunto, impedirà
+modifiche attraverso quel montaggio. Non cambierà i permessi OAuth usati
+dai comandi di backup. Passare allo scope completo <code>drive</code>
+autorizzerebbe l'accesso a tutti i file di Drive: impostare MacBackup
+come cartella radice di rclone non limiterebbe il token Google a quella
+cartella.</p>
+<p>Riferimenti: <a href="https://rclone.org/drive/#scopes">scope di
+rclone</a>, <a
+href="https://developers.google.com/workspace/drive/api/guides/delete">cestino
+e cancellazione Google Drive</a>, <a
+href="https://developers.google.com/workspace/drive/api/reference/rest/v3/files">metadati
+isAppAuthorized</a>.</p>
+<h2 id="autocompletamento-zsh">Autocompletamento Zsh</h2>
+<p>L'integrazione è caricata automaticamente dal normale avvio di Zsh
+nei tuoi dotfiles. Dopo l'installazione apri un nuovo terminale; per
+attivarla anche in un terminale già aperto, dove il completamento Zsh è
+già inizializzato:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> <span class="st">&quot;</span><span class="va">$HOME</span><span class="st">/.zsh/integrations/macbackup.zsh&quot;</span></span></code></pre></div>
+<p>Esempi di ciò che puoi digitare prima di premere il tasto Tab:</p>
+<pre class="text"><code>macbackup ch                          → macbackup check
+macbackup check --j                   → macbackup check --json
+macbackup lay                         → macbackup layout
+macbackup preview --lo                → macbackup preview --local
+macbackup run --progress-d            → macbackup run --progress-depth=
+macbackup restore --lin               → macbackup restore --links
+macbackup --conf                      → macbackup --config-dir=…
+macbackup explain /Users/kevinmuka/…   → completa file e directory</code></pre>
+<p>Il completamento è contestuale: <code>--config-dir</code> viene
+proposto prima del sottocomando; <code>--local</code> soltanto per
+preview; <code>--target</code> per i comandi remoti pertinenti. Completa
+anche i valori google, proton e all dove ammessi, le opzioni di
+<code>forget</code>, <code>--links</code> per <code>restore</code> e i
+valori da 1 a 5 di <code>--progress-depth</code>. <code>--json</code> è
+proposto per i comandi che lo supportano. Per <code>--config-dir</code>
+completa directory; per i percorsi originali completa file o directory.
+Se inizi un valore di percorso vuoto, propone <code>/</code>, perché il
+selettore richiede percorsi assoluti. Sono supportati il formato
+<code>--config-dir=PATH</code> e il formato
+<code>--config-dir PATH</code>, e l'escaping nativo dei nomi con
+spazi.</p>
+<p>Il completamento non esegue macbackup o rclone, non legge gli elenchi
+e non accede al cloud. Completa i percorsi usando il normale sistema di
+completamento di Zsh. La configurazione dei tuoi tasti e degli stili del
+terminale rimane quella già esistente.</p>
+<p>I file versionabili sono:</p>
+<pre class="text"><code>/Users/kevinmuka/.dotfiles/home/.zsh/completions/_macbackup
+/Users/kevinmuka/.dotfiles/home/.zsh/integrations/macbackup.zsh
+/Users/kevinmuka/.dotfiles/tests/test_macbackup_completion.py</code></pre>
+<p>L'integrazione aggiunge la directory di completamento a fpath prima
+di compinit. Se viene ricaricata dopo compinit, registra direttamente il
+comando tramite compdef. Non richiede modifiche a <code>.zshrc</code>,
+che carica già i file di integrazione. Le definizioni devono essere
+mantenute coerenti con il parser quando si aggiungeranno nuovi comandi o
+opzioni.</p>
+<h2 id="1-obiettivo-e-limiti">1. Obiettivo e limiti</h2>
+<p>Salvare cartelle e file scelti del Mac su due destinazioni
+indipendenti: Google Drive e Proton Drive. I dati ordinari devono
+restare consultabili dalle app dei servizi, anche dal telefono. Le
+credenziali e gli altri dati riservati devono essere cifrati prima del
+caricamento con rclone crypt. Ogni area deve conservare le copie
+sostituite e cancellate.</p>
+<p>Non è un backup avviabile del Mac e non equivale a Time Machine. Una
+lettura di file mentre un'applicazione li modifica non è uno snapshot
+consistente dell'intera applicazione: database, librerie fotografiche e
+altri insiemi di file attivi possono richiedere una chiusura dell'app o
+un'esportazione apposita.</p>
+<p>La disponibilità di una copia su Google non certifica quella su
+Proton. La leggibilità dal telefono dipende anche dai formati supportati
+dalle app: un file può essere scaricabile senza essere visualizzabile
+direttamente.</p>
+<h2 id="2-posizione-sul-mac-e-rapporto-con-git">2. Posizione sul Mac e
+rapporto con Git</h2>
+<p>Posizione scelta per il file eseguibile:</p>
+<pre class="text"><code>/Users/kevinmuka/.config/scripts/macbackup</code></pre>
+<p>La cartella <code>scripts</code> è già un collegamento simbolico
+a:</p>
+<pre class="text"><code>/Users/kevinmuka/.dotfiles/home/.config/scripts/</code></pre>
+<p>Di conseguenza il sorgente reale del comando sarà:</p>
+<pre class="text"><code>/Users/kevinmuka/.dotfiles/home/.config/scripts/macbackup</code></pre>
+<p>La documentazione viene conservata nel repository in:</p>
+<pre class="text"><code>/Users/kevinmuka/.dotfiles/docs/macbackup.md</code></pre>
+<p>Nell'ambiente del terminale ispezionato la cartella degli script
+compare già nel PATH. Questo andrà verificato anche da un nuovo
+terminale; un'eventuale automazione deve usare percorsi espliciti per lo
+script e per rclone, senza dipendere dal PATH della shell
+interattiva.</p>
+<p>Disposizione proposta per gli altri elementi:</p>
+<table>
+<thead>
+<tr>
+<th>Elemento</th>
+<th>Posizione</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Elenchi e impostazioni</td>
+<td><code>/Users/kevinmuka/.config/macbackup/</code></td>
+</tr>
+<tr>
+<td>Piani, stato e registri</td>
+<td><code>/Users/kevinmuka/.local/state/macbackup/</code></td>
+</tr>
+<tr>
+<td>Configurazione rclone</td>
+<td><code>/Users/kevinmuka/.config/rclone/rclone.conf</code> su questo
+Mac</td>
+</tr>
+<tr>
+<td>Cartella di recupero negli esempi</td>
+<td><code>/Users/kevinmuka/Restore/</code></td>
+</tr>
+</tbody>
+</table>
+<p>La posizione rclone è stata ottenuta con
+<code>rclone config file</code>; su un altro Mac bisogna ricontrollarla.
+Le operazioni remote usano la configurazione attraverso rclone; lo
+script non ne stampa i segreti.</p>
+<p>Il repository deve contenere codice, documentazione, test e soli
+esempi di configurazione senza segreti. Le impostazioni operative e gli
+elenchi personali restano inizialmente fuori dal repository: anche i
+nomi dei percorsi possono rivelare informazioni personali. Un'eventuale
+aggiunta degli elenchi ai dotfiles deve essere una scelta separata.</p>
+<p>Password, token OAuth, configurazione rclone, chiavi, piani e
+registri non devono essere aggiunti a Git. La cartella locale di stato
+deve avere accesso limitato all'utente; anche i registri possono
+contenere nomi di file sensibili. Non devono contenere il contenuto dei
+file o credenziali.</p>
+<p>L'installazione non comprende commit, push, modifiche al profilo
+della shell o attivazione di esecuzioni automatiche.</p>
+<p>L'autocompletamento aggiunge due file nel sistema di integrazioni Zsh
+già previsto dai dotfiles; non modifica i profili o il file
+<code>.zshrc</code>.</p>
+<h2 id="3-configurazione-quattro-elenchi-e-un-file-di-impostazioni">3.
+Configurazione: quattro elenchi e un file di impostazioni</h2>
+<p>Tre file descrivono percorsi assoluti da includere o escludere. Il
+quarto, <code>explicit-only-patterns.txt</code>, descrive nomi di file e
+directory che richiedono un'inclusione esatta e non possono entrare nel
+backup solo perché si è inclusa una directory superiore.
+<code>settings.toml</code> contiene destinazioni, limite di
+cancellazioni e nomi di directory da cifrare automaticamente.</p>
+<pre class="text"><code>/Users/kevinmuka/.config/macbackup/
+  plain-paths.txt
+  private-paths.txt
+  exclude-paths.txt
+  explicit-only-patterns.txt
+  settings.toml</code></pre>
+<p><code>plain</code> significa consultabile attraverso le normali app
+del servizio, con i permessi del tuo account. Non abilita condivisioni
+pubbliche. Su Proton rimane attiva la cifratura nativa del servizio;
+<code>private</code> aggiunge inoltre la cifratura di rclone crypt.</p>
+<h3 id="31-sintassi-dei-tre-elenchi-di-percorsi">3.1 Sintassi dei tre
+elenchi di percorsi</h3>
+<ul>
+<li>Una riga contiene un percorso assoluto e letterale.</li>
+<li>Righe vuote e righe che iniziano con <code>#</code> sono
+ignorate.</li>
+<li>Non si usano virgolette negli elenchi, nemmeno per nomi con
+spazi.</li>
+<li>Non si espandono <code>~</code>, <code>$HOME</code>, variabili,
+comandi o caratteri jolly.</li>
+<li>Non si supportano commenti alla fine di una riga che contiene un
+percorso.</li>
+<li>Un file seleziona quel file; una directory seleziona ricorsivamente
+i discendenti, compresi i file nascosti, ma senza autorizzare
+implicitamente file o directory soggetti alla regola explicit-only.</li>
+<li>La barra finale può indicare una directory; non cambia la precedenza
+delle regole.</li>
+<li>Il programma rifiuta percorsi relativi e componenti <code>..</code>,
+invece di interpretarli in modo dipendente dalla posizione del
+terminale.</li>
+<li>La selezione della radice <code>/</code> come intera sorgente è
+rifiutata. <code>/</code> è soltanto il riferimento per ricostruire i
+percorsi.</li>
+<li>Nomi non rappresentabili senza ambiguità nel formato a righe, per
+esempio contenenti un ritorno a capo, devono produrre un errore
+esplicito. Il programma non deve saltarli silenziosamente.</li>
+</ul>
+<p>Le regole sono letterali: un percorso che contiene <code>[</code> o
+<code>*</code> nel nome non deve diventare accidentalmente un filtro. La
+generazione delle regole rclone deve gestire correttamente questi
+caratteri.</p>
+<h3 id="32-precedenza">3.2 Precedenza</h3>
+<ol type="1">
+<li>Un'esclusione assoluta prevale su tutto: il percorso non viene
+salvato, nemmeno se elencato direttamente in plain o private.</li>
+<li>Un file con un nome in <code>[policy].ignored_file_names</code>
+viene saltato ovunque, anche se incluso esattamente. La regola riguarda
+i file, non una directory con lo stesso nome.</li>
+<li>Se il nome di un file o di una directory corrisponde a
+explicit-only, l'elemento non viene salvato a meno che il suo percorso
+completo compaia direttamente in <code>plain-paths.txt</code> o
+<code>private-paths.txt</code>. Elencare soltanto una directory
+superiore non soddisfa questo requisito, neppure nell'area privata. Una
+directory saltata non viene attraversata. Eccezione deliberata: una
+directory che corrisponde anche a <code>private_directory_names</code>
+viene attraversata e cifrata automaticamente; altre protezioni al suo
+interno continuano a valere.</li>
+<li>Superati i due controlli, un'inclusione privata o la corrispondenza
+con <code>private_directory_names</code> viene salvata cifrata.
+L'appartenenza a una directory privata mantiene privata la copia:
+un'inclusione esatta in plain non la rende consultabile.</li>
+<li>Un'inclusione normale non privata viene salvata nell'area
+<code>plain</code>.</li>
+<li>Un percorso non selezionato non viene salvato.</li>
+</ol>
+<p>Non si consente di reincludere un discendente di una directory
+esclusa. Non si consente di rendere normale un discendente di una
+directory privata. Queste scelte mantengono prevedibili le regole
+indipendentemente dall'ordine delle righe.</p>
+<p>Un percorso indica se stesso e i propri discendenti, non nomi simili:
+<code>/a/karabiner/</code> non comprende
+<code>/a/karabiner-old/</code>.</p>
+<p>Per ignorare altri nomi di file in tutta la selezione, aggiungerli
+come stringhe letterali a <code>ignored_file_names</code> in
+<code>settings.toml</code>, per esempio
+<code>ignored_file_names = [".DS_Store", "Thumbs.db"]</code>. Il
+confronto non distingue maiuscole e minuscole; non sono ammessi percorsi
+o wildcard. Gli spazi dentro le stringhe TOML sono significativi:
+<code>" ← "</code> indica esattamente un nome con uno spazio prima e uno
+dopo la freccia. La configurazione attiva ignora <code>.DS_Store</code>,
+<code>←</code> e <code>.localized</code>. Una nuova regola blocca i
+caricamenti futuri, ma lascia intatte le copie già presenti in
+<code>current</code> e <code>history</code>, che si possono rimuovere
+con <code>forget</code>. La regola non cancella file locali.</p>
+<h3 id="321-nomi-ammessi-soltanto-tramite-inclusione-esatta">3.2.1 Nomi
+ammessi soltanto tramite inclusione esatta</h3>
+<p>Configurazione iniziale di
+<code>explicit-only-patterns.txt</code>:</p>
+<pre class="text"><code>.env
+.env.*</code></pre>
+<p>Qui si descrivono nomi, non percorsi assoluti. La regola
+<code>.env</code> corrisponde a quel nome in qualsiasi directory;
+<code>.env.*</code> comprende per esempio <code>.env.local</code>,
+<code>.env.production</code> e anche <code>.env.example</code>. Un file
+di esempio eventualmente innocuo va incluso direttamente se lo si
+desidera: non si presume che sia privo di segreti. Nella configurazione
+attiva sono stati aggiunti <code>node_modules</code>,
+<code>.venv</code>, <code>venv</code> e <code>myenv</code>: una
+directory con uno di questi nomi viene saltata ovunque si trovi, anche
+se viene creata dopo questa revisione.</p>
+<p>La sintassi accetta nomi e il carattere jolly <code>*</code>,
+limitato al nome finale del file o della directory; non accetta
+<code>/</code>, <code>**</code>, espressioni regolari o regole con segno
+<code>+</code> o <code>-</code>. Righe vuote e commenti a inizio riga
+funzionano come negli altri elenchi. Per prudenza questi soli controlli
+sui nomi sono senza distinzione tra maiuscole e minuscole: anche
+<code>.ENV</code> richiede un'inclusione esatta. Gli altri percorsi
+mantengono la propria semantica e non diventano globalmente insensibili
+alle maiuscole.</p>
+<p>La regola riguarda file, directory ed elementi simbolici con quei
+nomi. Per autorizzare esplicitamente una directory protetta si aggiunge
+il suo percorso completo a un elenco di inclusione; i file al suo
+interno seguono comunque le altre regole, quindi un <code>.env</code>
+resta protetto. La selezione di un collegamento salva il collegamento
+secondo la politica descritta sotto e non autorizza automaticamente la
+copia della destinazione.</p>
+<p>Esempio con <code>/Users/kevinmuka/Desktop/progetto/</code> in
+plain:</p>
+<table>
+<thead>
+<tr>
+<th>Configurazione aggiuntiva</th>
+<th>Esito per <code>/Users/kevinmuka/Desktop/progetto/.env</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nessuna</td>
+<td>Saltato: incluso soltanto attraverso la directory</td>
+</tr>
+<tr>
+<td>Percorso esatto in plain</td>
+<td>Salvato nell'area normale, con avviso di inclusione esplicita di un
+nome protetto</td>
+</tr>
+<tr>
+<td>Percorso esatto in private</td>
+<td>Salvato cifrato e assente dalla copia normale</td>
+</tr>
+<tr>
+<td>Directory progetto in private, senza il percorso esatto del
+file</td>
+<td>Saltato: anche l'inclusione privata è soltanto ereditata</td>
+</tr>
+<tr>
+<td>Percorso esatto in entrambi gli elenchi</td>
+<td>Salvato cifrato: private prevale</td>
+</tr>
+<tr>
+<td>Percorso del file o di un suo antenato in exclude</td>
+<td>Saltato in ogni caso</td>
+</tr>
+</tbody>
+</table>
+<p>L'autorizzazione è soltanto per il percorso scritto: elencare
+esattamente <code>progetto/.env</code> non autorizza
+<code>progetto/subdir/.env</code>, <code>altro-progetto/.env</code> o
+<code>progetto/.env.local</code>.</p>
+<p>Questa regola deve essere attiva sia nel calcolo dell'anteprima sia
+nell'esecuzione dei trasferimenti, non soltanto nel controllo
+preliminare. Un nuovo <code>.env</code> creato dentro una cartella
+durante la run non deve passare attraverso una semplice inclusione
+ricorsiva della directory.</p>
+<p>Rimuovere il percorso esatto dall'elenco, oppure aggiungere un nuovo
+pattern di protezione, interrompe i caricamenti futuri ma conserva le
+copie già presenti in current e history. Per rimuoverle resta necessario
+<code>forget</code>. <code>preview --local</code> mostra i nomi
+bloccati; <code>versions</code> e <code>forget</code> permettono di
+trovare le copie cloud precedenti. <code>run</code> e
+<code>status</code> non producono ancora un avviso automatico che
+collega queste due informazioni.</p>
+<p>Questa protezione si applica ai caricamenti di macbackup sui cloud.
+Non configura Git, non crea regole <code>.gitignore</code> e non
+impedisce un push Git effettuato con altri strumenti. Non riconosce un
+segreto copiato dentro un file con altro nome o un archivio. Le
+directory <code>.git</code> selezionate sono ora cifrate
+automaticamente; ciò non elimina eventuali copie precedenti in chiaro,
+che si possono cercare e rimuovere con <code>versions</code> e
+<code>forget</code>.</p>
+<p>Il file di regole deve essere creato esplicitamente
+all'inizializzazione. Se manca o non è leggibile in una configurazione
+attiva, check, preview e run devono fermarsi: non si deve interpretare
+il problema come un elenco di protezioni vuoto. Nessun flag temporaneo
+deve aggirare globalmente explicit-only.</p>
+<h3 id="33-selezione-reale-concordata-il-30-ottobre-2026">3.3 Selezione
+reale concordata il 30 ottobre 2026</h3>
+<p>Questi percorsi sono stati inseriti nella configurazione locale.
+Google è ora abilitato nella configurazione locale per permettere
+all’utente di avviare la prima copia; Proton rimane disabilitato.
+Compilare gli elenchi da solo non avvia un trasferimento.</p>
+<p><code>plain-paths.txt</code>:</p>
+<pre class="text"><code>/Users/kevinmuka/Desktop/
+/Users/kevinmuka/Documents/
+/Users/kevinmuka/.config/
+/Users/kevinmuka/.dotfiles/
+/Users/kevinmuka/.gitconfig
+/Users/kevinmuka/.zshrc
+/Users/kevinmuka/.zprofile
+/Users/kevinmuka/.zshenv
+/Users/kevinmuka/.zsh</code></pre>
+<p><code>private-paths.txt</code>:</p>
+<pre class="text"><code>/Users/kevinmuka/.ssh/
+/Users/kevinmuka/.config/rclone/</code></pre>
+<p><code>exclude-paths.txt</code>:</p>
+<pre class="text"><code>/Users/kevinmuka/.config/gh/
+/Users/kevinmuka/.config/github-copilot/
+/Users/kevinmuka/.config/configstore/
+/Users/kevinmuka/.config/opencode/
+/Users/kevinmuka/.config/joplin-desktop/</code></pre>
+<p><code>explicit-only-patterns.txt</code> contiene <code>.env</code>,
+<code>.env.*</code>, <code>node_modules</code>, <code>.venv</code>,
+<code>venv</code> e <code>myenv</code>. Nessun <code>.env</code> è stato
+autorizzato singolarmente: includere Desktop, Documents o .config non
+basta a caricarlo. Le quattro voci aggiunte fermano file o directory con
+questi nomi in tutta la selezione; le directory non vengono
+attraversate. Le 42 esclusioni assolute temporanee usate per la
+revisione sono state rimosse da <code>exclude-paths.txt</code>, che
+conserva soltanto le cinque esclusioni <code>.config</code> elencate
+sopra. La classificazione della directory protetta vale anche quando
+macbackup incontra una vecchia copia già presente nel cloud: interrompe
+gli aggiornamenti senza archiviarla come cancellazione. Lo storico
+esistente resta conservato finché non viene eseguita una rimozione
+esplicita.</p>
+<p>Il 1 novembre l'utente ha scelto di cifrare tutte le directory
+<code>.git</code>. Nella configurazione attiva
+<code>settings.toml</code> contiene
+<code>[policy] private_directory_names = [".git"]</code>: ogni directory
+con questo nome, presente o futura, e i suoi discendenti entrano
+nell'area cifrata se si trovano sotto un percorso incluso. La voce
+<code>.git</code> resta anche in
+<code>explicit-only-patterns.txt</code>: se la regola di cifratura per
+nome viene rimossa, torna a essere richiesta un'inclusione esatta. Sono
+state rilevate 68 directory <code>.git</code> per circa 0,72 GiB. I file
+di lavoro dei progetti restano consultabili; <code>.env</code> e gli
+altri nomi protetti dentro <code>.git</code> richiedono comunque
+l'inclusione esatta. Un'esclusione assoluta continua a prevalere. La
+nuova classificazione non cancella eventuali vecchie copie
+<code>.git</code> in chiaro, incluse quelle nello storico.</p>
+<p>Se <code>Desktop/progetto</code> è in plain, un file di lavoro come
+<code>README.md</code> va in
+<code>plain/current/Users/kevinmuka/Desktop/progetto/README.md</code>,
+mentre un oggetto Git va in
+<code>private/current/Users/kevinmuka/Desktop/progetto/.git/objects/...</code>
+attraverso rclone crypt. Nel sito Drive, la directory consultabile del
+progetto non contiene <code>.git</code>; nell'area privata nomi e
+contenuti sono cifrati. Il percorso originale viene conservato in
+entrambe le aree, così i due alberi si possono ricomporre durante un
+recupero. La versione attuale di <code>restore</code> recupera un file
+alla volta: la ricomposizione automatica di un intero progetto non è
+ancora implementata.</p>
+<p>Karabiner è incluso: l'esclusione discussa inizialmente era soltanto
+un esempio. <code>.config/karabiner</code> è un collegamento; il
+contenuto reale viene salvato attraverso
+<code>.dotfiles/home/.config/karabiner</code>, incluso nel repository
+selezionato. Gli altri collegamenti .zsh vengono conservati come
+collegamenti e i loro contenuti nei dotfiles sono coperti separatamente.
+Un'esclusione di una posizione non esclude automaticamente una copia
+indipendente situata altrove.</p>
+<p>La prima scansione dei soli nomi e metadati aveva contato circa 182,5
+GB decimali di file selezionati e circa 488 mila elementi plain. La
+revisione ha individuato 42 directory <code>node_modules</code>,
+<code>.venv</code>, <code>venv</code> e <code>myenv</code> sotto Desktop
+e Documents: circa 8,6 GiB e 426 mila file, ricreabili dai rispettivi
+progetti. La cartella <code>Desktop/backup 25U3 0312-1112</code>
+contiene fotografie ed è rimasta inclusa. Con le esclusioni per nome la
+selezione locale è risultata intorno a 174,4 GB e 61,7 mila elementi
+plain; i numeri restano una fotografia del momento, non una run di
+backup riuscita. La versione 0.2 aveva segnalato 50 errori relativi ai
+file Icon\r. La scelta di conservarne anche i metadati è stata recepita
+nella versione 0.3, anziché aggiungere esclusioni. Non sono stati
+caricati dati reali.</p>
+<p>La nuova scansione completa con il selettore 0.3 è riuscita senza
+errori. Il conteggio durante il collaudo includeva anche alcuni piccoli
+file sintetici nell'area di lavoro sotto Documents: i numeri sono una
+fotografia di quel momento, non un inventario immutabile. Gli avvisi sui
+collegamenti e sui socket esclusi rimangono distinti dagli errori.</p>
+<p>Dopo il passaggio a Production dichiarato dall'utente e la
+riconnessione, il controllo remoto Google è riuscito. L'anteprima Google
+del 30 ottobre con le sei regole explicit-only ha completato senza
+errori: 61.664 file ordinari, 6 privati e 50 icone selezionati, nessuna
+archiviazione per cancellazione prevista. Era un dry-run: non ha
+caricato né cancellato file. Una correzione successiva ha esteso la
+classificazione delle directory protette anche alle vecchie copie cloud;
+la prova sintetica locale ha confermato che queste copie rimangono in
+current. Il target Google reale resta disabilitato in
+<code>settings.toml</code> e non è stata eseguita una run di dati
+personali.</p>
+<p>L'anteprima del 1 novembre con <code>.git</code> temporaneamente
+esclusa aveva contato 35.526 file ordinari, 6 privati e 50 icone, zero
+archiviazioni per cancellazione, circa 173,7 GB locali. Era un dry-run.
+Dopo l'attivazione della regola cifrata, la scansione locale ha contato
+35.576 elementi plain, 26.154 privati, 50 icone e circa 174,4 GB
+selezionati. La successiva anteprima Google ha previsto 35.526 file
+plain, 26.154 privati e 50 icone, senza archiviazioni per cancellazione.
+La differenza di 50 nel conteggio plain è dovuta alle icone Finder,
+contate separatamente nell'anteprima. Anche questa era un'anteprima; in
+seguito Google è stato abilitato e il primo trasferimento reale è stato
+interrotto su richiesta dell’utente dopo alcuni file. Non è un backup
+completo.</p>
+<p>Prima di lasciare all'utente l'avvio manuale, è stata aggiunta la
+policy per ignorare i nomi <code>.DS_Store</code>, <code>←</code> (con
+gli spazi) e <code>.localized</code>. La nuova anteprima Google è
+riuscita: 34.656 file plain, 26.078 privati, 50 icone; una sola
+archiviazione prevista. Il file era
+<code>Desktop/modern-download-upload-web-symbol-cloud-storage_1017-59711.xmp</code>,
+presente nella copia parziale ma ormai assente sul Mac: la run lo
+sposterà nello storico, conservandolo. Non sono state proposte
+archiviazioni dovute ai nuovi nomi ignorati. I conteggi sono una
+fotografia del 1 novembre, non una garanzia per una run successiva.</p>
+<h3 id="34-credenziali-e-collegamenti-simbolici">3.4 Credenziali e
+collegamenti simbolici</h3>
+<p>Non si può promettere di riconoscere automaticamente ogni segreto
+dentro Desktop, Documents, repository o <code>.config</code>. Prima del
+primo caricamento occorre rivedere le selezioni. Il percorso effettivo
+della configurazione rclone, quando selezionato, deve essere protetto
+dalla classificazione privata; una configurazione incoerente deve essere
+bloccata.</p>
+<p>I link simbolici non devono essere seguiti automaticamente. Possono
+essere conservati mediante <code>--links</code>, che rclone rappresenta
+sul cloud con file aventi suffisso <code>.rclonelink</code>. Il
+contenuto del link è il percorso della destinazione, non il contenuto
+della destinazione.</p>
+<p>Per questo selezionare <code>.config/</code> non basta a salvare il
+contenuto di un repository raggiunto soltanto attraverso un
+collegamento: anche il percorso reale deve essere incluso. È il caso
+della cartella degli script nei dotfiles.</p>
+<p>La conservazione dei collegamenti e il controllo di collisioni con
+veri file <code>.rclonelink</code> devono essere collaudati. Se la
+stessa sorgente riservata viene raggiunta anche da un percorso
+selezionato come normale, il controllo deve bloccare o risolvere
+esplicitamente il conflitto; non deve procedere con una copia in chiaro.
+Non è un sistema di riconoscimento di copie indipendenti aventi lo
+stesso contenuto.</p>
+<h2 id="4-struttura-delle-destinazioni">4. Struttura delle
+destinazioni</h2>
+<p>Ogni servizio contiene un'area dedicata a questo backup:</p>
+<pre class="text"><code>MacBackup/
+  plain/
+    current/
+      Users/kevinmuka/...
+      etc/hosts
+      Volumes/Archivio/...
+    history/
+      RUN_ID/...
+  private/
+    [nomi e contenuti cifrati]</code></pre>
+<p>La vista logica dell'area privata, attraverso il remote crypt, è:</p>
+<pre class="text"><code>current/Users/kevinmuka/.ssh/...
+history/RUN_ID/Users/kevinmuka/.ssh/...</code></pre>
+<p>Il remote crypt deve comprendere l'intera area privata, incluso lo
+storico. Il backup privato non deve essere eseguito direttamente sul
+remote sottostante. Ogni servizio ha un proprio collegamento crypt; non
+serve una copia da Google a Proton, perché entrambi leggono le sorgenti
+locali.</p>
+<p>La struttura riproduce i percorsi, ma non certifica da sola la
+conservazione di permessi, attributi estesi o tutte le proprietà del
+filesystem macOS. Servono scelte e prove specifiche per i metadati
+necessari al recupero.</p>
+<p>Conservare fuori dal Mac i parametri necessari a ricreare il remote
+crypt, inclusi password e salt personalizzato se usato. Non basta
+conoscere la password di Google o Proton. La configurazione rclone deve
+essere protetta anche localmente: il normale offuscamento delle password
+non è cifratura sicura della configurazione.</p>
+<h2 id="5-cosa-accade-durante-il-backup">5. Cosa accade durante il
+backup</h2>
+<table>
+<thead>
+<tr>
+<th>Evento</th>
+<th>Effetto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nuovo file selezionato e ammesso dalle protezioni</td>
+<td>Caricato nell'area assegnata, sotto <code>current</code></td>
+</tr>
+<tr>
+<td>Nuovo <code>.env</code> incluso soltanto tramite una directory</td>
+<td>Saltato, con motivazione explicit-only</td>
+</tr>
+<tr>
+<td>Percorso esatto di un file protetto tolto dagli elenchi</td>
+<td>Copie già caricate mantenute senza aggiornamenti</td>
+</tr>
+<tr>
+<td>File modificato</td>
+<td>Copia precedente nello storico; nuova copia in
+<code>current</code></td>
+</tr>
+<tr>
+<td>File cancellato dentro una directory selezionata e disponibile</td>
+<td>Copia precedente spostata nello storico</td>
+</tr>
+<tr>
+<td>Percorso aggiunto alle esclusioni</td>
+<td>Copie già caricate mantenute senza aggiornamenti</td>
+</tr>
+<tr>
+<td>Percorso tolto dagli elenchi</td>
+<td>Copie già caricate mantenute senza aggiornamenti</td>
+</tr>
+<tr>
+<td>Percorso passato da normale a privato</td>
+<td>Nuovi backup cifrati; vecchie copie normali mantenute e
+segnalate</td>
+</tr>
+<tr>
+<td>Percorso passato da privato a normale</td>
+<td>Avviso esplicito prima di caricarlo consultabile</td>
+</tr>
+<tr>
+<td>Sorgente esplicitamente inclusa mancante o illeggibile</td>
+<td>Operazione interessata bloccata; nessuna interpretazione come
+directory vuota</td>
+</tr>
+<tr>
+<td>Spazio remoto insufficiente</td>
+<td>Errore; nessuna pulizia automatica dello storico</td>
+</tr>
+</tbody>
+</table>
+<p><code>current</code> significa ultima copia dei percorsi ancora
+gestiti, con eventuali vecchie copie rimaste ferme dopo un'esclusione.
+Non è necessariamente uno specchio esatto dell'attuale selezione.
+<code>status</code> e l'anteprima devono rendere visibili queste
+situazioni.</p>
+<p>La sparizione di una sorgente esplicitamente elencata è ambigua e
+blocca il backup: potrebbe essere un disco scollegato o una
+cancellazione intenzionale. La cancellazione di un file figlio dentro
+una directory selezionata e correttamente disponibile è invece una
+normale cancellazione da archiviare.</p>
+<p>Per i volumi esterni non basta controllare che una directory esista:
+bisogna verificare che il volume atteso sia montato e corrisponda a
+quello previsto.</p>
+<p>Non è prevista alcuna scadenza automatica dei nostri storici.
+L'eventuale introduzione futura di una politica di conservazione
+richiede una scelta separata. Cestino e versioni interne dei servizi
+seguono invece le rispettive regole del provider.</p>
+<p>Ogni tentativo usa un identificativo unico per lo storico. Un nuovo
+tentativo non deve riusare una cartella di storico in cui potrebbe
+sovrascrivere una versione conservata. Un'esecuzione interrotta può
+avere già trasferito o archiviato alcuni file: non è una transazione
+atomica, né tra file né tra servizi.</p>
+<h2 id="6-comandi-proposti">6. Comandi proposti</h2>
+<p>Sono sottocomandi di macbackup, non di rclone. Il ripristino generale
+di un albero rimane una funzione futura.</p>
+<table>
+<thead>
+<tr>
+<th>Comando</th>
+<th>Effetto principale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init</code></td>
+<td>Crea localmente quattro elenchi e <code>settings.toml</code>, senza
+inclusioni attive</td>
+</tr>
+<tr>
+<td><code>check</code></td>
+<td>Controlla sorgenti locali; con <code>--remote --target</code> legge
+anche inventari e remotes</td>
+</tr>
+<tr>
+<td><code>explain PATH</code></td>
+<td>Spiega la classificazione locale di un singolo percorso</td>
+</tr>
+<tr>
+<td><code>layout [PATH]</code></td>
+<td>Mostra le parti private dentro una directory plain; senza PATH usa
+la directory corrente</td>
+</tr>
+<tr>
+<td><code>preview --local</code> / <code>preview --target</code></td>
+<td>Mostra la selezione locale o simula il trasferimento remoto senza
+modifiche</td>
+</tr>
+<tr>
+<td><code>run --target</code></td>
+<td>Trasferisce nelle aree abilitate, conserva versioni e mostra
+l'avanzamento</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Legge il resoconto locale dell'ultima run, anche interrotta</td>
+</tr>
+<tr>
+<td><code>restore-icon</code></td>
+<td>Ricrea localmente un'icona Finder da uno snapshot già scaricato</td>
+</tr>
+<tr>
+<td><code>versions PATH</code></td>
+<td>Elenca le copie di un file o riepiloga quelle sotto una
+directory</td>
+</tr>
+<tr>
+<td><code>restore PATH</code></td>
+<td>Scarica un file in una destinazione esplicita; con
+<code>--links</code> ricrea un symlink</td>
+</tr>
+<tr>
+<td><code>verify --target</code></td>
+<td>Confronta le sorgenti attuali con <code>current</code>, senza
+modifiche</td>
+</tr>
+<tr>
+<td><code>forget</code></td>
+<td>Prepara un piano di rimozione e, con <code>--plan ID --apply</code>,
+lo applica</td>
+</tr>
+</tbody>
+</table>
+<p>L'opzione globale <code>--config-dir PATH</code> va prima del
+sottocomando e cambia soltanto la directory degli elenchi e di
+<code>settings.toml</code>; non cambia sorgenti, stato o credenziali
+rclone. I comandi di lettura e di esecuzione che prevedono
+<code>--json</code> restituiscono JSON UTF-8.</p>
+<p>Valori uniformi:</p>
+<ul>
+<li><code>--target google|proton|all</code>: destinazioni.</li>
+<li><code>--area plain|private|all</code>: aree, quando il comando lo
+richiede.</li>
+<li>I percorsi contenenti spazi devono essere tra virgolette nella
+shell.</li>
+<li>Un'opzione che seleziona un'area privata non deve richiedere di
+digitare nomi cifrati.</li>
+</ul>
+<h3 id="61-check-controllo-locale-e-remoto">6.1 <code>check</code>:
+controllo locale e remoto</h3>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> check</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> check <span class="at">--json</span></span></code></pre></div>
+<p>Controlla sintassi, precedenze, sorgenti, permessi di lettura, link,
+conflitti e presenza del file explicit-only. Evidenzia le inclusioni
+esatte che autorizzano nomi protetti nell'area plain.
+<code>check --remote --target google</code> legge anche gli inventari e
+controlla i remotes; il target è obbligatorio se si vuole evitare il
+valore predefinito google del controllo remoto. Non elabora quote o
+costi non disponibili.</p>
+<p>Non crea un backup e non dimostra che un recupero funzioni. La
+lettura delle sorgenti può richiedere il consenso di macOS per Desktop o
+Documents: un rifiuto è un errore da risolvere, non un'esclusione
+silenziosa.</p>
+<h3 id="62-preview-mostrare-le-operazioni">6.2 <code>preview</code>:
+mostrare le operazioni</h3>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> preview <span class="at">--local</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> preview <span class="at">--local</span> <span class="at">--json</span></span></code></pre></div>
+<p>La modalità disponibile mostra i percorsi e la loro classificazione
+locale, i motivi di esclusione e gli avvisi. Le inclusioni esatte di
+nomi protetti nell'area normale sono evidenziate. Un file bloccato da
+explicit-only riporta anche il pattern responsabile nel risultato JSON e
+nella spiegazione individuale.</p>
+<p>La modalità disponibile <code>preview --target google</code> esegue
+il dry-run remoto e riporta per destinazione e area file selezionati e
+archiviazioni dovute a cancellazioni. La presentazione completa delle
+singole differenze e delle vecchie copie diventate non gestite resta da
+completare.</p>
+<p>La modalità locale non accede al cloud e non scrive un resoconto:
+stampa il risultato. La versione futura potrà salvare un resoconto
+locale protetto. Dimensioni e durata del trasferimento, quando stimate,
+dovranno essere indicate come stime.</p>
+<p>Per capire la classificazione di un singolo percorso, senza scandire
+tutte le sorgenti:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> explain <span class="st">&quot;/Users/kevinmuka/Desktop/progetto/.env&quot;</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> explain <span class="st">&quot;/Users/kevinmuka/Desktop/progetto/.env&quot;</span> <span class="at">--json</span></span></code></pre></div>
+<p>Le spiegazioni e le anteprime locali non provano che i file siano già
+salvati o cifrati. La cartella privata sul cloud non esiste finché non
+viene configurata la parte di trasferimento.</p>
+<p>L'anteprima non congela i file né le destinazioni. Una successiva
+esecuzione deve rivalidare la situazione: non si promette che eseguirà
+esattamente un elenco calcolato ore prima.</p>
+<h3 id="63-run-eseguire-il-backup">6.3 <code>run</code>: eseguire il
+backup</h3>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> run <span class="at">--target</span> all</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> run <span class="at">--target</span> google</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> run <span class="at">--target</span> proton</span></code></pre></div>
+<p>Il programma ricontrolla la configurazione, acquisisce un blocco
+contro esecuzioni concorrenti e svolge le operazioni nelle aree
+assegnate. Un percorso privato non deve essere caricato nell'area
+normale in caso di errore della cifratura. Durante <code>run</code>,
+macbackup mostra i rapporti di rclone ogni 5 secondi in una schermata
+dedicata, se il terminale è interattivo. Le barre ASCII distinguono il
+progresso in byte da quello in file. La velocità complessiva è in
+evidenza; per ciascun file attivo, percorso e velocità sono su righe
+diverse. Tempo trascorso e stima sono arrotondati ai secondi, senza
+millisecondi. Premi <code>u</code> per alternare unità binarie (KiB,
+MiB, GiB e relative velocità) e decimali (kB, MB, GB); premi
+<code>?</code> per mostrare o nascondere la legenda. È una scelta di
+visualizzazione durante la fase corrente e non modifica i file né il
+resoconto. Ctrl-C interrompe il trasferimento come prima; il terminale
+viene ripristinato. Senza terminale interattivo, le stesse informazioni
+vengono stampate periodicamente come testo e non si possono usare i
+tasti. Più file e più cartelle possono essere trasferiti
+contemporaneamente: non esiste sempre un'unica «directory corrente».
+Ogni rapporto riassume le cartelle dei file attivi, raggruppandole per
+due livelli sotto la home. Si può scegliere da uno a cinque livelli con
+<code>--progress-depth N</code>, per esempio
+<code>macbackup run --target google --progress-depth 3</code>. I
+percorsi dei file attivi non vengono troncati. Le statistiche sono della
+fase plain, icone o private in corso, non dell'intero backup.
+<code>status</code> viene scritto al termine; dopo Ctrl+C durante il
+trasferimento registra la fase interrotta. Alla run successiva vengono
+confrontati i file già completi; macbackup non conserva byte parziali
+per riprendere il file interrotto, che viene ritrasferito
+dall'inizio.</p>
+<p><code>run --json</code> esegue lo stesso backup reale e cambia
+soltanto il riepilogo finale su stdout. L'avanzamento resta sul
+terminale tramite stderr. Senza <code>--json</code>, il riepilogo finale
+distingue i selezionati dai trasferiti e dai controllati;
+<code>status</code> conserva gli stessi conteggi per ogni fase conclusa
+o interrotta.</p>
+<p>Prima di una quantità anomala di rimozioni da <code>current</code>,
+il programma si ferma. La soglia è max_delete in settings.toml,
+inizialmente 25 per area e destinazione; va rivista prima di abilitare
+l'automazione.</p>
+<p>L'esito è separato per Google/Proton e plain/private. Una
+destinazione può riuscire mentre l'altra fallisce: il riepilogo e il
+codice di uscita devono indicare il risultato parziale. Un successo
+richiede il completamento di tutte le operazioni richieste.</p>
+<p>La singola esecuzione non garantisce la stessa fotografia temporale
+sui due servizi: se i file locali cambiano tra le letture, le copie
+possono riferirsi a istanti diversi. Il backup non va presentato come
+snapshot simultaneo.</p>
+<h3 id="64-status-conoscere-lesito-memorizzato">6.4 <code>status</code>:
+conoscere l'esito memorizzato</h3>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> status</span></code></pre></div>
+<p>Mostra il resoconto dell'ultima run, con gli esiti per destinazione e
+area richieste in quella run. Per ogni fase distingue
+<code>selected</code> (elementi previsti),
+<code>transferred_files</code> (trasferimenti completati secondo
+rclone), <code>transferred_bytes</code> (byte contabilizzati da rclone
+nella fase), <code>checked_files</code> (verifiche di rclone) e
+<code>listed_items</code> (file e cartelle incontrati durante
+l'esplorazione, non il totale già presente nel cloud).
+<code>renamed_files</code>, <code>server_side_moves</code> e
+<code>server_side_move_bytes</code> riportano gli spostamenti fatti sul
+cloud: con <code>--backup-dir</code> includono le copie precedenti
+spostate nello storico. Non si sommano ai file caricati dal Mac.
+<code>counts_complete: true</code> indica statistiche finali ricevute
+dopo una fase riuscita. Dopo Ctrl+C, se rclone ha già emesso statistiche
+periodiche, mostra l'ultimo conteggio con
+<code>counts_complete: false</code>: può essere inferiore ai file
+effettivamente completati prima del segnale, e i byte possono includere
+parte del file interrotto. Se non è arrivato nessun rapporto, i valori
+sono <code>null</code> anziché zero. La versione 0.9.1 mostrava i
+progressi nel terminale ma non catturava i rapporti periodici durante
+Ctrl+C: i suoi <code>null</code> non si possono ricostruire dallo stato
+locale. Dalla 0.9.2 il riepilogo periodico viene sia mostrato sia
+registrato come ultima fotografia disponibile. I testi JSON sono
+stampati in UTF-8 leggibile, senza sequenze <code>\u2019</code> per gli
+apostrofi. La vista storica dell'ultimo successo per ogni destinazione e
+la data di verifica non sono ancora implementate. Lo stato locale
+memorizzato non certifica che il cloud sia raggiungibile in quel
+momento, che tutti gli storici siano integri o che una prova di recupero
+sia riuscita.</p>
+<h3 id="65-versions-trovare-le-copie-di-un-file-o-di-una-directory">6.5
+<code>versions</code>: trovare le copie di un file o di una
+directory</h3>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> versions <span class="st">&quot;/Users/kevinmuka/Documents/tesi.docx&quot;</span> <span class="at">--target</span> google</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> versions <span class="st">&quot;/Users/kevinmuka/.ssh/config&quot;</span> <span class="at">--target</span> google <span class="at">--area</span> private</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> versions ~/.dotfiles <span class="at">--target</span> google</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> versions ~/.dotfiles <span class="at">--target</span> google <span class="at">--files</span></span></code></pre></div>
+<p>Il comando legge <code>current</code> e tutti gli storici delle aree
+richieste, anche se il percorso è stato tolto dagli elenchi o il file
+locale non esiste più. <code>--target</code> è obbligatorio;
+<code>--area</code> vale <code>all</code> se omesso, perché la ricerca è
+soltanto in lettura. Per un file serve il percorso originale esatto;
+l'output mostra area, servizio, dimensione, data di modifica disponibile
+e identificativo di versione: <code>current</code> oppure l'ID della
+directory sotto <code>history</code>. La data di modifica non è la data
+di archiviazione.</p>
+<p>Per una directory esistente sul Mac, basta il suo percorso
+(<code>~/.dotfiles</code> viene espanso dalla shell). Se la directory
+locale non esiste più, aggiungere <code>/</code> in fondo al percorso
+assoluto per chiedere la ricerca ricorsiva. L'output normale mostra, per
+area e destinazione, un gruppo <code>current</code> con il numero di
+elementi attuali e un gruppo per ciascuna run che ha elementi storici
+sotto quella directory, con conteggio e byte. <code>--files</code>
+aggiunge percorsi originali, dimensioni e tipo (<code>files</code> o
+<code>macos-icons</code>) <strong>solo per i gruppi
+<code>history</code></strong>; del gruppo <code>current</code> restano
+visibili conteggio e byte, senza l’elenco dei file attuali.
+<code>--json</code> restituisce gli stessi gruppi e i dettagli di ogni
+elemento, incluso il percorso remoto. <code>--files</code> è valido
+soltanto per una directory. La ricerca include sia l'area plain sia
+private salvo <code>--area</code> esplicito: per <code>.dotfiles</code>,
+la directory <code>.git</code> cifrata compare sotto private, mentre i
+file consultabili compaiono sotto plain.</p>
+<p>Ogni <code>history/RUN_ID</code> contiene <strong>soltanto gli
+elementi spostati in quella run</strong>, non una fotografia completa
+della directory a quella data. Cambiare un file sul Mac non crea subito
+uno storico: serve una copia precedente già caricata e una successiva
+run che la sostituisca. <code>versions</code> non ripristina un'intera
+directory; <code>restore</code> continua a lavorare su un file alla
+volta.</p>
+<p>Le destinazioni possono essere disabilitate in
+<code>settings.toml</code>, purché i rispettivi remote rclone esistano.
+Il comando non richiede lo stato locale di vecchie run: ricostruisce
+l'elenco dal cloud. <code>--json</code> restituisce anche il percorso
+remoto esatto per ciascuna copia e conserva i dettagli degli elementi
+<code>current</code>. Dalla versione 0.9.5 <code>versions</code> usa una
+ricerca in sola lettura propria: cerca il percorso richiesto in
+<code>current</code>, elenca gli ID delle run in <code>history</code> e
+cerca lo stesso percorso dentro ciascuna run. Per un singolo file cerca
+nella sua directory superiore. Non calcola hash né ID originali;
+<code>forget</code> continua a fare il proprio inventario e le proprie
+verifiche prima di qualsiasi rimozione. La ricerca circoscritta dovrebbe
+essere più rapida soprattutto per percorsi piccoli e poche run; con
+molte run può comportare più richieste separate. Non è stata misurata
+sul Drive reale.</p>
+<h3 id="66-restore-recuperare-un-singolo-file">6.6 <code>restore</code>:
+recuperare un singolo file</h3>
+<p>Dopo aver letto l'identificativo con <code>versions</code>, si
+sceglie esplicitamente una destinazione locale:</p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> restore <span class="st">&quot;/Users/kevinmuka/Documents/tesi.docx&quot;</span> <span class="dt">\</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--target</span> google <span class="at">--area</span> plain <span class="at">--version</span> current <span class="dt">\</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--to</span> <span class="st">&quot;/Users/kevinmuka/Restore/tesi-recuperata.docx&quot;</span></span></code></pre></div>
+<p>Per un collegamento, scegliere un percorso di prova diverso
+dall’originale e aggiungere <code>--links</code>:</p>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> restore <span class="st">&quot;/Users/kevinmuka/.zprofile&quot;</span> <span class="dt">\</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--target</span> google <span class="at">--area</span> plain <span class="at">--version</span> current <span class="dt">\</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--to</span> <span class="st">&quot;/Users/kevinmuka/Downloads/macbackup-restore/.zprofile&quot;</span> <span class="at">--links</span></span></code></pre></div>
+<p>La directory <code>Downloads/macbackup-restore</code> deve già
+esistere. Il collegamento ricreato punta al percorso originale
+registrato, <code>/Users/kevinmuka/.dotfiles/home/.zprofile</code>; la
+destinazione va recuperata separatamente. Un collegamento assoluto può
+risultare non funzionante su un Mac con nome home diverso.</p>
+<p>Per una vecchia versione si usa come valore di <code>--version</code>
+l'ID della relativa directory <code>history</code> mostrato da
+<code>versions</code>. Il comando richiede un solo servizio e una sola
+area. La directory di destinazione deve esistere e non attraversare
+collegamenti simbolici. Il programma rifiuta il percorso originale come
+destinazione e non sovrascrive un file già presente, salvo
+<code>--replace</code> esplicito; anche allora rifiuta una destinazione
+simbolica o non regolare. Scarica prima in un file temporaneo con
+permessi 600, verifica dimensione e, quando il backend espone hash
+utilizzabili, confronta gli hash. Rilegge l'inventario prima di rendere
+visibile il file recuperato. Se non è disponibile un hash, lo dichiara:
+dimensione e metadati non certificano da soli l'integrità del
+contenuto.</p>
+<p>Un collegamento simbolico può essere recuperato con
+<code>restore --links</code>: senza il flag, il comando si ferma e non
+crea un normale <code>.rclonelink</code>. Scarica e controlla il piccolo
+file di destinazione, quindi ricrea un collegamento con il medesimo
+target, anche se assoluto o contenente <code>..</code>; non crea il file
+a cui il collegamento punta. Il ripristino del solo symlink in una
+cartella di prova non ricompone automaticamente i contenuti dei
+dotfiles. <code>--links</code> è rifiutato per file normali. Il comando
+non ripristina directory intere, permessi di directory, ACL, attributi
+macOS o date originali. Per una chiave <code>.ssh</code> il file
+recuperato ha permessi 600, ma bisogna preparare separatamente la
+directory di destinazione con permessi appropriati, normalmente 700. Le
+icone Finder seguono la procedura <code>restore-icon</code> descritta
+sopra. Un file scaricato dentro una sorgente ancora selezionata può
+essere incluso nella run successiva.</p>
+<p>Il collaudo isolato del 1 novembre ha trovato due versioni sintetiche
+su Google: una in <code>plain/history</code> e una in
+<code>private/current</code>. Entrambe sono state scaricate e
+confrontate con i file fittizi di partenza. L'hash della copia normale è
+stato verificato; il remote crypt non ha esposto un hash utilizzabile, e
+il risultato lo ha dichiarato. I due file cloud e le cartelle di prova
+sono stati rimossi e verificati assenti. Nessun file personale è stato
+recuperato o modificato.</p>
+<p><strong>Limite dello storico:</strong> ogni directory
+<code>history/RUN_ID</code> contiene soltanto i file archiviati in quel
+tentativo. Il programma non promette il ripristino di un intero albero a
+una data arbitraria. Per offrirlo servono inventari completi e una
+ricostruzione collaudata, oppure uno strumento basato su snapshot.</p>
+<h3 id="67-verify-confrontare-la-selezione-locale-con-current">6.7
+<code>verify</code>: confrontare la selezione locale con
+<code>current</code></h3>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> verify <span class="at">--target</span> google</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> verify <span class="at">--target</span> google <span class="at">--area</span> private <span class="at">--download</span></span></code></pre></div>
+<p>Il comando scansiona le sorgenti locali selezionate e confronta i
+file ammessi con <code>current</code> nel servizio richiesto. Non
+modifica sorgenti o cloud. La modalità ordinaria usa
+<code>rclone check</code> per l'area normale e
+<code>rclone cryptcheck</code> per l'area cifrata; entrambe richiedono
+una corrispondenza completa nel rapporto di rclone.
+<code>--download</code> usa <code>rclone check --download</code> e legge
+il contenuto remoto per confrontarlo con quello locale: può generare
+molto traffico e richiedere molto tempo. Per la cartella normale Google
+rclone usa gli hash comuni quando disponibili; la verifica cifrata usa
+il metodo apposito di cryptcheck. La verifica comprende anche gli
+snapshot correnti delle icone Finder che macbackup genera dalle sorgenti
+selezionate.</p>
+<p>Il risultato separa file corrispondenti, diversi, mancanti e errori
+di lettura per servizio, area e tipo. Una differenza fra
+<code>current</code> e il file locale attuale <strong>non prova</strong>
+che il backup sia corrotto: il file potrebbe essere stato modificato
+dopo la copia. Il comando non verifica gli storici, le copie conservate
+dopo un'esclusione, l'intero insieme dei metadati macOS o le revisioni
+native del provider. Senza un manifesto dei contenuti registrato al
+momento della run, non certifica il contenuto di un vecchio file
+confrontandolo con l'originale attuale. Le destinazioni possono essere
+disabilitate in <code>settings.toml</code>, purché i remote rclone
+esistano.</p>
+<p>Nel collaudo isolato su Google del 1 novembre, <code>verify</code> ha
+trovato corrispondenti un file normale e uno cifrato sia con il metodo
+ordinario sia con <code>--download</code>. Una modifica locale fittizia
+che conservava dimensione e orario è stata segnalata come differenza. I
+due file e i namespace di prova sono stati rimossi e verificati assenti;
+i file personali non sono stati toccati.</p>
+<h3 id="68-forget-rimuovere-copie-conservate">6.8 <code>forget</code>:
+rimuovere copie conservate</h3>
+<p><code>forget</code> usa due passaggi. Il primo legge il cloud e crea
+soltanto un piano; il secondo applica quel piano dopo una nuova
+verifica. Area, destinazione e modalità sono sempre esplicite. Per un
+file si indica il percorso originale esatto; per una directory si
+aggiunge <code>/</code> finale, anche se la directory locale non esiste
+più:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> forget <span class="st">&quot;/Users/kevinmuka/Desktop/old-project/&quot;</span> <span class="dt">\</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--area</span> plain <span class="at">--target</span> google <span class="at">--mode</span> trash</span></code></pre></div>
+<p>Per rimuovere anche gli storici plain di un file diventato privato,
+si può creare un piano Google con <code>--mode permanent</code> al posto
+di <code>trash</code>, dopo aver controllato il percorso e il piano
+stampato:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> forget <span class="st">&quot;/Users/kevinmuka/Desktop/progetto/segreto.txt&quot;</span> <span class="dt">\</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--area</span> plain <span class="at">--target</span> google <span class="at">--mode</span> permanent</span></code></pre></div>
+<p>Questo esempio non applica ancora la rimozione: soltanto il
+successivo <code>forget --plan ID --apply</code> usa il piano.
+<code>--area private</code> cerca invece la copia cifrata;
+<code>--area all</code> cerca entrambe.</p>
+<p>Il piano elenca ogni file corrispondente in <code>current</code> e in
+tutte le directory sotto <code>history</code>, con area, servizio,
+posizione, numero e byte noti. Per una directory comprende anche gli
+snapshot <code>macos-icons</code> della cartella e dei discendenti. Il
+confronto usa i confini dei percorsi: <code>old-project/</code> non
+comprende <code>old-project-other/</code>. La ricerca non applica le
+regole di selezione correnti, così trova anche copie caricate prima di
+una nuova esclusione o classificazione privata. Le destinazioni possono
+essere disabilitate in <code>settings.toml</code>, purché i relativi
+remote rclone siano configurati. Un piano di oltre 10.000 file viene
+rifiutato: restringere il percorso e creare più piani.</p>
+<p>Se non ci sono corrispondenze non viene creato un piano. Altrimenti
+macbackup genera un ID casuale e salva il piano in un file locale con
+permessi 600, sotto <code>~/.local/state/macbackup/forget-plans</code>.
+Il piano scade dopo un'ora e si usa una sola volta. L'output mostra il
+comando preciso per applicarlo:</p>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="ex">macbackup</span> forget <span class="at">--plan</span> F0123456789ab <span class="at">--apply</span></span></code></pre></div>
+<p>Prima dell'applicazione macbackup rilegge gli inventari e confronta
+l'insieme completo delle corrispondenze, i percorsi remoti, le
+dimensioni, gli orari, gli ID e gli hash restituiti dal backend. Se una
+copia cambia o ne appare un'altra, blocca l'intero piano. Alcuni backend
+non espongono hash del contenuto: modifiche dello stesso file con
+identica dimensione e identico orario potrebbero non essere rilevate.
+Per questo il piano scade e non va usato mentre altri client modificano
+il backup.</p>
+<p>L'applicazione rimuove i file uno alla volta, poi rilegge
+l'inventario. In caso di errore può esserci un risultato parziale,
+registrato sotto lo stesso ID; si crea un nuovo piano per gli elementi
+rimasti. Il comando non modifica sorgenti locali né elenchi. Se il
+percorso è ancora incluso, una successiva <code>run</code> potrebbe
+caricarlo nuovamente: prima si cambia la classificazione e poi si usa
+<code>forget</code>. Le directory vuote possono restare nel cloud dopo
+la rimozione dei file.</p>
+<p><code>--area plain</code> permette per esempio di rimuovere le
+vecchie copie consultabili dopo aver spostato un file nell'area privata.
+<code>--area all</code> cerca entrambe le aree.
+<code>--target all</code> richiede che siano configurati entrambi i
+servizi; non assume che una destinazione disabilitata sia assente.</p>
+<h3 id="69-cestino-rimozione-definitiva-e-revisioni-del-provider">6.9
+Cestino, rimozione definitiva e revisioni del provider</h3>
+<p><code>--mode trash</code> rimuove le copie individuate dalle cartelle
+del backup e le manda nel cestino del servizio. Non significa
+eliminazione definitiva e può non liberare spazio.</p>
+<p><code>--mode permanent</code> è accettato soltanto per
+<code>--target google</code> quando il remote normale è davvero di tipo
+Google Drive. Il collaudo isolato del 1 novembre ha creato quattro
+piccoli file fittizi (plain e private, current e history), generato un
+piano da quattro corrispondenze, applicato <code>permanent</code>,
+verificato zero file attivi residui e rimosso le due directory di prova
+rimaste vuote. Non sono stati toccati file personali. Non può essere
+combinato con <code>--target all</code>; una capacità non supportata
+viene rifiutata prima di qualsiasi rimozione e non viene trasformata
+silenziosamente in <code>trash</code>.</p>
+<p>Su Google rclone supporta la cancellazione permanente dei file
+individuati tramite <code>--drive-use-trash=false</code>. L'ispezione di
+revisioni native e di copie già presenti nel cestino è distinta
+dall'ispezione delle nostre cartelle: non va dichiarata completa senza
+una funzionalità dedicata e verificata. Rimuovere un percorso non
+individua automaticamente duplicati con un altro nome o in altre
+cartelle.</p>
+<p>Nel backend Proton di rclone 1.75.2, Remove sposta il file nel
+cestino e CleanUp svuota tutto il cestino. Non risulta un comando rclone
+esposto da questo backend per la rimozione definitiva selettiva:
+macbackup rifiuta <code>permanent</code> su Proton. <code>trash</code>
+sarà da collaudare sull’account Proton quando il remote sarà
+configurato. La rimozione definitiva selettiva di elementi già nel
+cestino Proton resta manuale; macbackup non fornisce ancora una mappa
+verificata dei nomi cifrati nel cestino.</p>
+<p>Il risultato distingue la rimozione dalle cartelle attive e la
+modalità richiesta. <code>trash</code> lascia le copie recuperabili nel
+cestino del servizio; <code>permanent</code> chiede al provider Google
+la cancellazione definitiva dei file attivi selezionati. Il programma
+non certifica l’assenza di copie precedentemente nel cestino, revisioni
+native di Drive o duplicati con altri nomi.</p>
+<h2 id="7-sicurezza-operativa-e-recuperabilità">7. Sicurezza operativa e
+recuperabilità</h2>
+<ul>
+<li>Il programma deve controllare le sorgenti prima di qualsiasi
+archiviazione dovuta a cancellazione. Non deve usare
+<code>--ignore-errors</code> per forzare il backup oltre un errore di
+lettura.</li>
+<li>Non deve avviare due run contemporanee, né run e forget
+contemporaneamente.</li>
+<li>La cifratura deve fallire in modo chiuso: nessun ripiego su un
+caricamento in chiaro.</li>
+<li>Tutti i percorsi devono essere passati a rclone come argomenti,
+senza costruire comandi shell da testo non affidabile.</li>
+<li>I file locali di stato, le credenziali e le cartelle di recupero
+devono avere protezioni adeguate. Lo stato operativo deve essere escluso
+dal backup ordinario per evitare ricorsioni e caricamenti accidentali di
+piani o registri.</li>
+<li>La configurazione necessaria a ricostruire il backup deve essere
+esportabile in forma protetta; le chiavi di recupero devono essere
+disponibili senza dipendere dall'unico Mac salvato.</li>
+<li>I file cloud del backup vanno consultati come copie. Modifiche o
+cancellazioni dal telefono non vengono propagate al Mac e possono essere
+sovrascritte o ricreate dalla successiva esecuzione.</li>
+<li>I log non contengono contenuti dei file. L'eventuale inventario
+remoto dei percorsi privati deve essere cifrato a sua volta.</li>
+<li>Un semplice backup con accesso allo stesso account non è un archivio
+immutabile: un accesso compromesso può mettere a rischio anche le copie
+remote.</li>
+</ul>
+<h2 id="8-cosa-rclone-fa-già-e-cosa-deve-fare-macbackup">8. Cosa rclone
+fa già e cosa deve fare macbackup</h2>
+<table>
+<thead>
+<tr>
+<th>Compito</th>
+<th>Responsabilità</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accesso ai provider e trasferimenti</td>
+<td>rclone</td>
+</tr>
+<tr>
+<td>Cifratura del contenuto privato e dei nomi</td>
+<td>rclone crypt</td>
+</tr>
+<tr>
+<td>Conservazione dei file sostituiti/cancellati</td>
+<td>rclone sync con backup-dir, collaudato sul provider</td>
+</tr>
+<tr>
+<td>Traduzione dei quattro elenchi in elenchi esatti per area,
+distinguendo inclusioni esatte da quelle ereditate</td>
+<td>macbackup</td>
+</tr>
+<tr>
+<td>Controlli delle sorgenti locali e classificazione</td>
+<td>macbackup; l'identità di un mount esterno non è ancora
+verificata</td>
+</tr>
+<tr>
+<td>Blocco delle esecuzioni concorrenti</td>
+<td>macbackup</td>
+</tr>
+<tr>
+<td>Riepilogo separato dei risultati</td>
+<td>macbackup</td>
+</tr>
+<tr>
+<td>Inventario delle versioni e recupero guidato</td>
+<td>macbackup con operazioni rclone</td>
+</tr>
+<tr>
+<td>Piani selettivi di forget e controllo dell'esito</td>
+<td>macbackup con operazioni rclone supportate</td>
+</tr>
+</tbody>
+</table>
+<p>Non si devono combinare ingenuamente files-from con filtri di
+esclusione: rclone ignora gli altri filtri quando viene usato
+files-from. Gli elenchi dell'utente non devono essere presentati come un
+formato nativo di rclone.</p>
+<p>Explicit-only non è un'opzione nativa di rclone. Il selettore applica
+le precedenze in Python sia ai file locali sia alle copie sotto current.
+Il trasporto passa a rclone soltanto un elenco esatto separato da NUL
+tramite files-from0, senza combinarlo con filtri di esclusione che
+sarebbero ignorati. L'elenco comprende i file ammessi e le vecchie copie
+ancora gestite da archiviare; le copie escluse o diventate dell'altra
+area non vi entrano e rimangono conservate. Un nuovo file apparso dopo
+la preparazione dell'elenco aspetta la run successiva. Non si passa a
+rclone un'inclusione ricorsiva della directory che possa aggirare la
+scelta dei singoli file protetti.</p>
+<p>L'uso dei comandi rclone rimane possibile anche senza il programma,
+purché si conoscano i remotes e si usi quello crypt per l'area privata.
+Documentare i nomi effettivi dei remotes dopo la configurazione. Non
+fornire comandi distruttivi generici da eseguire a memoria.</p>
+<h2 id="9-verifiche-già-fatte-e-verifiche-necessarie">9. Verifiche già
+fatte e verifiche necessarie</h2>
+<p>La suite locale attuale comprende 126 test con dati sintetici e veri
+comandi rclone su remotes locali e crypt. Copre la selezione e le
+precedenze, <code>.env</code> e gli altri nomi protetti, la cifratura
+automatica delle directory <code>.git</code>, i file ignorati con spazi
+nel nome, collegamenti simbolici, icone Finder, trasferimenti, storico,
+piani <code>forget</code>, <code>versions</code>, <code>restore</code>
+di file e symlink con <code>--links</code>, <code>verify</code>, il
+resoconto di run interrotte, i conteggi trasferiti e l'autocompletamento
+Zsh. La resa delle icone Finder è stata anche provata tramite
+AppKit.</p>
+<p>Su Google Drive sono state eseguite prove isolate con file fittizi:
+copia plain e crypt, recupero di versioni correnti e storiche,
+<code>forget</code> permanente sulle copie di prova e
+<code>verify</code> ordinario e con download. I namespace di prova
+autorizzati sono stati rimossi e verificati assenti. Queste prove non
+equivalgono alla verifica dell'intera copia personale.</p>
+<p>Il primo trasferimento dei dati personali su Google è stato
+interrotto e non ha ancora un esito <code>ok: true</code> per tutte le
+aree. Prima di chiamarlo backup riuscito occorrono una run completa,
+<code>macbackup verify --target google</code> e almeno tre prove di
+recupero in una directory separata: un file plain, un file private e un
+symlink con <code>restore --links</code>. <code>verify</code> confronta
+la copia corrente con i file locali del momento; eventuali modifiche
+locali dopo il backup vanno interpretate prima di concludere che la
+copia cloud è errata.</p>
+<p>Proton non è ancora configurato né collaudato con l'account
+dell'utente. La rimozione <code>forget --mode trash</code> su Proton,
+una seconda run senza modifiche, il recupero delle chiavi da un Mac
+nuovo, il montaggio in sola lettura e l'automazione periodica restano da
+verificare o implementare come descritto nelle rispettive sezioni. La
+verifica dell'identità dei mount esterni, il ripristino automatico di un
+intero albero, le revisioni native e gli elementi già nel cestino dei
+provider non sono coperti dai comandi attuali.</p>
+<h2 id="10-decisioni-operative-e-lavoro-rimanente">10. Decisioni
+operative e lavoro rimanente</h2>
+<p>Sono già definite la posizione dello script nei dotfiles, i percorsi
+assoluti che rispecchiano il Mac, le aree plain/private, la cifratura di
+<code>.ssh</code>, <code>.config/rclone</code> e di tutte le directory
+<code>.git</code>, la protezione dei <code>.env</code>, le esclusioni
+concordate e i nomi ignorati in <code>settings.toml</code>. Una nuova
+esclusione o riclassificazione non elimina automaticamente le copie
+precedenti; per rimuoverle da <code>current</code> e
+<code>history</code> si usa un piano <code>forget</code> esplicito.
+Google è abilitato, Proton è ancora disabilitato.</p>
+<p>Il prossimo traguardo è completare e verificare la copia Google
+avviata dall'utente. Poi si configura Proton Drive, si ripetono backup e
+recupero su quel servizio e si valuta il montaggio di consultazione in
+sola lettura. L'automazione si abilita solo dopo una prova riuscita di
+backup e recupero; non è prevista alcuna scadenza automatica dello
+storico.</p>
+<p>Se diventa necessario ripristinare cartelle intere esattamente a una
+data, va valutato uno strumento a snapshot come restic.
+<code>macbackup</code> oggi conserva i file spostati nello storico per
+run, non fotografie complete della selezione a ogni data.</p>
+<h2 id="11-fonti-ufficiali">11. Fonti ufficiali</h2>
+<p>Consultate durante la progettazione e le verifiche dal 30 ottobre al
+2 novembre 2026:</p>
+<ul>
+<li><a href="https://rclone.org/filtering/">Rclone: filtri e
+files-from</a></li>
+<li><a href="https://rclone.org/commands/rclone_sync/">Rclone:
+sync</a></li>
+<li><a href="https://rclone.org/docs/#backup-dir-string">Rclone:
+backup-dir</a></li>
+<li><a href="https://rclone.org/crypt/">Rclone: crypt e protezione della
+configurazione</a></li>
+<li><a href="https://rclone.org/drive/">Rclone: Google Drive, revisioni
+e cestino</a></li>
+<li><a href="https://rclone.org/protondrive/">Rclone: Proton Drive e
+limitazioni</a></li>
+<li><a
+href="https://github.com/rclone/rclone/blob/v1.75.2/backend/protondrive/protondrive.go">Rclone
+1.75.2: codice del backend Proton Drive</a></li>
+<li><a href="https://rclone.org/commands/rclone_delete/">Rclone: delete
+e filtri</a></li>
+<li><a href="https://rclone.org/commands/rclone_purge/">Rclone: purge
+ignora i filtri</a></li>
+<li><a href="https://rclone.org/local/#symlinks-junction-points">Rclone:
+collegamenti simbolici</a></li>
+<li><a href="https://rclone.org/commands/rclone_cryptcheck/">Rclone:
+cryptcheck</a></li>
+<li><a
+href="https://developers.google.com/workspace/drive/api/guides/manage-revisions">Google:
+gestione delle revisioni native</a></li>
+<li><a
+href="https://proton.me/support/proton-drive-mobile-manage-files-folders">Proton:
+eliminazione selettiva dal cestino nell'app</a></li>
+<li><a
+href="https://proton.me/support/proton-drive-delete-restore-synced-files">Proton:
+cancellazione e recupero di file sincronizzati</a></li>
+<li><a
+href="https://restic.readthedocs.io/en/stable/010_introduction.html">Restic:
+snapshot e recupero</a></li>
+<li><a
+href="https://zsh.sourceforge.io/Doc/Release/Completion-System.html">Zsh:
+sistema di completamento, fpath, compinit e compdef</a></li>
+<li><a href="https://proton.me/support/create-custom-item">Proton Pass:
+elementi personalizzati</a></li>
+<li><a href="https://proton.me/support/pass-custom-field">Proton Pass:
+campi nascosti</a></li>
+</ul>
+</article>
+</div></main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
+</body>
+</html>

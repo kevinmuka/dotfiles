@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How dot.sh plans, applies and safely manages dotfile symlinks.">
+<title>Symlink manager — kevinmuka / dotfiles</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav class="top-nav" aria-label="Main navigation"><a href="../">Overview</a><a href="../macbackup/">macbackup</a><a href="../nvim/">Neovim</a><a href="../symlinks/" aria-current="page">Symlinks</a><a href="../theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main>
+<div class="wrap page-hero">
+<p class="eyebrow">dot.sh / bootstrap</p>
+<h1>Connect the files. Keep control.</h1>
+<p class="lead">The repository mirrors paths below the home directory. dot.sh links those paths into place conservatively: it reports conflicts, avoids silently replacing existing data and treats the .config directory as a special case.</p>
+<div class="actions"><a class="button primary" href="https://github.com/kevinmuka/dotfiles/blob/main/scripts/dot.sh">Read the script ↗</a><a class="button" href="https://github.com/kevinmuka/dotfiles/blob/main/README.md">Repository guide ↗</a></div>
+</div>
+<section class="section"><div class="wrap">
+<div class="section-head"><div><p class="eyebrow">The normal path</p><h2>Plan before apply.</h2></div><p>Use the same repository on another Mac without treating every existing file as disposable.</p></div>
+<div class="flow">
+<div class="flow-step"><span class="index">01 / PLAN</span><h3>Preview links</h3><p>dot.sh plan shows what is already correct, what could be linked and where conflicts exist. It does not change the home directory.</p></div>
+<div class="flow-step"><span class="index">02 / REVIEW</span><h3>Resolve conflicts</h3><p>dot.sh conflicts lists only blockers. Existing real files, directories and links to other targets are not overwritten by default.</p></div>
+<div class="flow-step"><span class="index">03 / APPLY</span><h3>Create safe links</h3><p>dot.sh apply creates the links it can make without replacing existing content.</p></div>
+</div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">A deliberate exception</p><h2>.config stays real.</h2><p class="lead">The script never makes one symlink for the whole .config directory. It links managed children individually, leaving other applications' configuration folders alone.</p><div class="note"><p>For an existing real directory, the optional <code>--merge-existing-dirs</code> mode lets dot.sh enter it and add only missing child links. It does not delete the existing contents.</p></div></div>
+<div class="code-window"><div class="label">home directory layout</div><pre>~/.config/             # real directory
+├── nvim     → ~/.dotfiles/home/.config/nvim
+├── wezterm  → ~/.dotfiles/home/.config/wezterm
+├── theme    → ~/.dotfiles/home/.config/theme
+└── ...      # other apps remain independent</pre></div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">Explicit operations</p><h2>When a path already exists.</h2><div class="stack">
+<div class="stack-row"><span class="index">ADD</span><div><h3>Adopt a path</h3><p>dot.sh add and dot.sh adopt move an existing path into the repository, then link it back. They refuse a path already present in the repository.</p></div></div>
+<div class="stack-row"><span class="index">REPLACE</span><div><h3>Replace a directory</h3><p>dot.sh replace works only for a directory already managed under home/. It moves the old local target into timestamped backups before creating the link.</p></div></div>
+</div></div>
+<div class="code-window"><div class="label">commands to inspect</div><pre>./scripts/dot.sh plan
+./scripts/dot.sh conflicts
+./scripts/dot.sh apply
+
+# Optional, explicit actions:
+./scripts/dot.sh plan --merge-existing-dirs
+./scripts/dot.sh add ~/.example
+./scripts/dot.sh replace ~/.config/wezterm</pre></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
+</body>
+</html>

@@ -1,23 +1,72 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>dotfiles — kevinmuka</title>
-  <link rel="stylesheet" href="macbackup/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A guided tour of Kevin Muka's dotfiles: backups, Neovim, safe symlinks and a shared terminal theme.">
+<title>dotfiles — kevinmuka</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
-  <header><a class="brand" href="./">dotfiles</a><nav aria-label="Main navigation"><a href="https://github.com/kevinmuka/dotfiles">GitHub repository</a></nav></header>
-  <main>
-    <p class="eyebrow">kevinmuka</p>
-    <h1>Personal configurations and tools.</h1>
-    <p class="lead">Information about the tools and configurations maintained in the dotfiles repository.</p>
-    <section>
-      <h2><a href="macbackup/">macbackup</a></h2>
-      <p>A personal Mac backup utility using rclone and the owner's cloud storage accounts.</p>
-      <p><a href="macbackup/">About macbackup</a> · <a href="macbackup/privacy.html">Privacy policy</a></p>
-    </section>
-  </main>
-  <footer><a href="https://github.com/kevinmuka/dotfiles">kevinmuka/dotfiles</a></footer>
+<header class="site-header"><div class="wrap header-inner">
+  <a class="brand" href="./"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+  <nav class="top-nav" aria-label="Main navigation"><a href="./" aria-current="page">Overview</a><a href="macbackup/">macbackup</a><a href="nvim/">Neovim</a><a href="symlinks/">Symlinks</a><a href="theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main>
+<div class="wrap hero">
+  <div class="hero-copy">
+    <p class="eyebrow">One repository · several daily tools</p>
+    <h1>A home for the tools <strong>behind my Mac.</strong></h1>
+    <p class="lead">Shell, editor, terminal and backup configuration, kept together without turning the home directory into a mystery. Explore how each piece works and where its source lives.</p>
+    <div class="hero-actions"><a class="button primary" href="#explore">Explore the setup ↓</a><a class="button" href="symlinks/">How the links work</a></div>
+  </div>
+  <div class="terminal" aria-label="Repository layout illustration">
+    <div class="terminal-bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>~/.dotfiles</span></div>
+    <pre><span class="prompt">❯</span> tree -L 2 home/
+<span class="path">home/</span>
+├── <span class="path">.config/</span>
+│   ├── nvim/        <span class="comment"># editor</span>
+│   ├── wezterm/     <span class="comment"># terminal</span>
+│   ├── theme/       <span class="comment"># shared colors</span>
+│   └── scripts/     <span class="comment"># macbackup + tools</span>
+├── .zshrc
+└── .zprofile
+
+<span class="prompt">❯</span> ./scripts/dot.sh plan
+<span class="comment"># review changes before applying links</span></pre>
+  </div>
+</div>
+<section class="section" id="explore"><div class="wrap">
+  <div class="section-head"><div><p class="eyebrow">Explore the system</p><h2>Start with a tool.</h2></div><p>Each page explains the role of a module, its safety boundaries, and where to find the complete source or guide.</p></div>
+  <div class="cards">
+    <a class="card accent" href="macbackup/"><span class="index">01 / DATA</span><h3>macbackup</h3><p>Selected files on Google Drive, private paths encrypted before upload, and a history you can inspect and clean deliberately.</p><span class="card-footer"><span>Backup · rclone · recovery</span><span>Explore →</span></span></a>
+    <a class="card blue" href="nvim/"><span class="index">02 / EDITOR</span><h3>Neovim</h3><p>A modular setup with a small core, lazy-loaded plugins, LSP tooling and a theme shared with the terminal.</p><span class="card-footer"><span>Lua · lazy.nvim · workflow</span><span>Explore →</span></span></a>
+    <a class="card orange" href="symlinks/"><span class="index">03 / BOOTSTRAP</span><h3>Symlink manager</h3><p>See what would change, apply only safe links, and handle existing files explicitly with dot.sh.</p><span class="card-footer"><span>Plan · apply · conflicts</span><span>Explore →</span></span></a>
+    <a class="card" href="theme/"><span class="index">04 / INTERFACE</span><h3>Theme &amp; terminal</h3><p>Shared color tokens connect Zsh, WezTerm and Neovim; Karabiner and other modules shape the surrounding workflow.</p><span class="card-footer"><span>Colors · panes · keys</span><span>Explore →</span></span></a>
+  </div>
+</div></section>
+<section class="section"><div class="wrap">
+  <div class="section-head"><div><p class="eyebrow">The structure</p><h2>One source, explicit boundaries.</h2></div><p>The repository stores configuration. The symlink manager connects it to the home directory. The backup tool independently selects what should reach cloud storage.</p></div>
+  <div class="flow">
+    <div class="flow-step"><span class="index">SOURCE / 01</span><h3>Repository</h3><p>home/ mirrors paths below the home directory. Neovim is tracked as a separate submodule.</p></div>
+    <div class="flow-step"><span class="index">LINK / 02</span><h3>Local setup</h3><p>dot.sh links managed paths and reports conflicts before replacing anything.</p></div>
+    <div class="flow-step"><span class="index">BACKUP / 03</span><h3>Cloud copy</h3><p>macbackup applies its own plain, private, exclusion and history rules.</p></div>
+  </div>
+</div></section>
+<section class="section"><div class="wrap split">
+  <div><p class="eyebrow">Before you run anything</p><h2>Inspect first.</h2><p class="lead">The setup favors commands that explain the next change before they make it. Start with the repository guide or read the documentation for the tool you need.</p><div class="actions"><a class="button primary" href="https://github.com/kevinmuka/dotfiles#readme">Read the repository README ↗</a><a class="button" href="macbackup/docs/">macbackup manual</a></div></div>
+  <div class="code-window"><div class="label">safe starting points</div><pre>./scripts/dot.sh plan
+macbackup check
+macbackup preview --local
+
+# Full guides
+macbackup/docs/
+nvim/docs/</pre></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="macbackup/privacy.html">macbackup privacy</a></div></div></footer>
 </body>
 </html>

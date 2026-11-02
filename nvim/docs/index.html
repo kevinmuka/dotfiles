@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Full guide to the modular Neovim setup in Italian.">
+<title>Neovim documentation — kevinmuka / dotfiles</title>
+<link rel="stylesheet" href="../../style.css">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="../../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav class="top-nav" aria-label="Main navigation"><a href="../../">Overview</a><a href="../../macbackup/">macbackup</a><a href="../../nvim/" aria-current="page">Neovim</a><a href="../../symlinks/">Symlinks</a><a href="../../theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main><div class="wrap doc-intro"><p class="eyebrow">nvim / documentation · italiano</p><p>Readable snapshot of the source guide. For the newest edits, <a href="https://github.com/kevinmuka/nvim/blob/main/README.md">open the Markdown on GitHub ↗</a>.</p></div>
+<div class="wrap document-layout">
+<aside class="doc-nav"><p class="eyebrow">On this page</p><nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#neovim-config" id="toc-neovim-config">Neovim Config</a>
+<ul>
+<li><a href="#bootstrap-e-struttura"
+id="toc-bootstrap-e-struttura">Bootstrap E Struttura</a></li>
+<li><a href="#come-vengono-caricati-i-moduli"
+id="toc-come-vengono-caricati-i-moduli">Come Vengono Caricati I
+Moduli</a></li>
+<li><a href="#moduli-più-importanti"
+id="toc-moduli-più-importanti">Moduli Più Importanti</a></li>
+<li><a href="#come-funziona-lazynvim-in-questo-setup"
+id="toc-come-funziona-lazynvim-in-questo-setup">Come Funziona
+<code>lazy.nvim</code> In Questo Setup</a></li>
+<li><a href="#lsp-mason-formatter-e-linter"
+id="toc-lsp-mason-formatter-e-linter">LSP, Mason, Formatter E
+Linter</a></li>
+<li><a href="#comandi-utili-per-lavorare-sulla-config"
+id="toc-comandi-utili-per-lavorare-sulla-config">Comandi Utili Per
+Lavorare Sulla Config</a></li>
+<li><a href="#dipendenze-strettamente-necessarie"
+id="toc-dipendenze-strettamente-necessarie">Dipendenze Strettamente
+Necessarie</a></li>
+<li><a href="#convenzioni-del-progetto"
+id="toc-convenzioni-del-progetto">Convenzioni Del Progetto</a></li>
+<li><a href="#bootstrap-rapido" id="toc-bootstrap-rapido">Bootstrap
+Rapido</a></li>
+<li><a href="#cose-da-migliorare-in-futuro"
+id="toc-cose-da-migliorare-in-futuro">Cose Da Migliorare In
+Futuro</a></li>
+</ul></li>
+</ul>
+</nav></aside>
+<article class="doc-content">
+
+<h1 id="neovim-config">Neovim Config</h1>
+<p>Configurazione Neovim modulare basata su <code>lazy.nvim</code>, con
+bootstrap minimale, plugin spec separate per area e una distinzione
+netta tra:</p>
+<ul>
+<li>moduli <code>core</code> caricati subito</li>
+<li>plugin caricati da <code>lazy.nvim</code></li>
+<li>tool di sviluppo gestiti da <code>Mason</code></li>
+<li>formatter e linter dichiarati esplicitamente</li>
+</ul>
+<p>L'obiettivo del setup non e' avere "tutto dappertutto", ma mantenere
+un punto di ingresso semplice, moduli piccoli e un flusso prevedibile
+quando si aggiungono nuove parti.</p>
+<h2 id="bootstrap-e-struttura">Bootstrap E Struttura</h2>
+<p>L'entrypoint e' <a href="https://github.com/kevinmuka/nvim/blob/main/init.lua"><code>init.lua</code></a>:</p>
+<ol type="1">
+<li>carica <code>myconf.core</code></li>
+<li>bootstrap di <code>lazy.nvim</code> e import delle plugin spec</li>
+<li>applica tema e palette</li>
+<li>attiva la winbar custom</li>
+</ol>
+<p>In pratica il flusso e' questo:</p>
+<pre class="text"><code>init.lua
+├── myconf.core
+│   ├── editor/options.lua
+│   ├── ui/tabline.lua
+│   ├── mappings/*
+│   ├── cmd/*
+│   └── events/*
+├── myconf.lazy
+│   ├── bootstrap lazy.nvim
+│   ├── import myconf.plugins
+│   └── import myconf.plugins.lsp
+├── myconf.theme.theme
+└── myconf.ui.winbar</code></pre>
+<p>Le directory principali sono:</p>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/configuration.lua"><code>lua/configuration.lua</code></a>:
+toggle e valori globali del setup</li>
+<li><a href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core"><code>lua/myconf/core</code></a>:
+opzioni, mapping, comandi e autocmd caricati eagerly</li>
+<li><a href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/plugins"><code>lua/myconf/plugins</code></a>:
+plugin spec generali per <code>lazy.nvim</code></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/plugins/lsp"><code>lua/myconf/plugins/lsp</code></a>:
+plugin spec per LSP e Mason</li>
+<li><a href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/theme"><code>lua/myconf/theme</code></a>:
+palette, tema e utility legate ai colori</li>
+<li><a href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/ui"><code>lua/myconf/ui</code></a>: componenti
+UI custom fuori dai plugin</li>
+<li><a href="https://github.com/kevinmuka/nvim/blob/main/lazy-lock.json"><code>lazy-lock.json</code></a>: versioni
+pin dei plugin</li>
+</ul>
+<h2 id="come-vengono-caricati-i-moduli">Come Vengono Caricati I
+Moduli</h2>
+<h3 id="moduli-core">Moduli <code>core</code></h3>
+<p>I moduli <code>core</code> non sono registrati a mano uno per uno:
+vengono scoperti automaticamente da <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/core/utils/modules.lua"><code>lua/myconf/core/utils/modules.lua</code></a>.</p>
+<p>Questo vale per:</p>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/mappings"><code>lua/myconf/core/mappings</code></a></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/cmd"><code>lua/myconf/core/cmd</code></a></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/events"><code>lua/myconf/core/events</code></a></li>
+</ul>
+<p>Ogni file <code>.lua</code> della directory, escluso
+<code>init.lua</code>, viene caricato automaticamente. Se il modulo
+esporta:</p>
+<ul>
+<li>una tabella con <code>setup()</code>, viene chiamato
+<code>setup()</code></li>
+<li>una funzione, viene eseguita direttamente</li>
+</ul>
+<p>Questo significa che per aggiungere un nuovo mapping o un nuovo
+comando spesso basta creare un nuovo file nella directory giusta.</p>
+<h3 id="plugin-con-lazynvim">Plugin con <code>lazy.nvim</code></h3>
+<p>Il bootstrap di <code>lazy.nvim</code> vive in <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/lazy.lua"><code>lua/myconf/lazy.lua</code></a>. Al
+primo avvio:</p>
+<ul>
+<li>se <code>lazy.nvim</code> non esiste in
+<code>stdpath("data")</code>, viene clonato con <code>git</code></li>
+<li>il runtime path viene aggiornato</li>
+<li><code>lazy</code> importa tutte le plugin spec da
+<code>myconf.plugins</code> e <code>myconf.plugins.lsp</code></li>
+</ul>
+<p>Ogni file dentro quelle directory ritorna una spec valida per
+<code>lazy.nvim</code>. Il pattern usato qui e':</p>
+<ul>
+<li>un file per plugin o per area piccola</li>
+<li><code>event</code>, <code>ft</code>, <code>cmd</code> o
+<code>keys</code> per lazy-loading quando possibile</li>
+<li><code>dependencies</code> dichiarate localmente nella spec</li>
+<li><code>opts</code> o <code>config</code> direttamente nel file del
+plugin</li>
+</ul>
+<p>Esempi:</p>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/telescope.lua"><code>lua/myconf/plugins/telescope.lua</code></a></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/nvim-cmp.lua"><code>lua/myconf/plugins/nvim-cmp.lua</code></a></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/lsp/lspconfig.lua"><code>lua/myconf/plugins/lsp/lspconfig.lua</code></a></li>
+</ul>
+<h2 id="moduli-più-importanti">Moduli Più Importanti</h2>
+<h3 id="config-globale">Config globale</h3>
+<p><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/configuration.lua"><code>lua/configuration.lua</code></a> e'
+il posto giusto per:</p>
+<ul>
+<li>toggle UI come winbar, smooth scrolling e backdrop</li>
+<li>valori piccoli ma globali come il numero massimo di split</li>
+<li>scelta del tema (<code>dark</code> o <code>light</code>)</li>
+<li>override dei binari esterni in <code>conf.external</code></li>
+</ul>
+<p>La funzione <code>ui.theme()</code> legge anche
+<code>NVIM_THEME</code>, quindi puoi forzare il tema da shell:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">NVIM_THEME</span><span class="op">=</span>light <span class="ex">nvim</span></span></code></pre></div>
+<p>Per i binari esterni puoi anche usare variabili ambiente
+opzionali:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="va">NVIM_ZOXIDE_BIN</span><span class="op">=</span>/custom/bin/zoxide <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="va">NVIM_SIOYEK_BIN</span><span class="op">=</span>/custom/bin/sioyek <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">nvim</span></span></code></pre></div>
+<p>Nel workflow TeX attuale, Sioyek viene usato da <code>vimtex</code>
+come viewer. <code>texlab</code> resta separato e non e' usato come
+entrypoint per preview o forward search.</p>
+<h3 id="core">Core</h3>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/core/editor/options.lua"><code>lua/myconf/core/editor/options.lua</code></a>:
+opzioni base, indentazione per filetype, wrapping per testo, scrolloff
+dinamico</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/mappings"><code>lua/myconf/core/mappings</code></a>:
+leader, shortcut base, split navigation, mapping terminali</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/cmd"><code>lua/myconf/core/cmd</code></a>:
+comandi custom come <code>:ConfigEdit</code>,
+<code>:ReloadConfig</code>, <code>:CodexHere</code>,
+<code>:Finder</code>, <code>:Z</code></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/tree/main/lua/myconf/core/events"><code>lua/myconf/core/events</code></a>:
+autocmd generali e backdrop per alcune UI flottanti</li>
+</ul>
+<h3 id="ui-e-tema">UI E Tema</h3>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/colorscheme.lua"><code>lua/myconf/plugins/colorscheme.lua</code></a>:
+setup di <code>tokyonight</code> con palette custom</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/theme/palette.lua"><code>lua/myconf/theme/palette.lua</code></a>:
+converte la palette esterna in valori usati dal tema</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/ui/winbar.lua"><code>lua/myconf/ui/winbar.lua</code></a>:
+winbar custom con filename, icone e breadcrumb LSP via
+<code>nvim-navic</code></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/lualine.lua"><code>lua/myconf/plugins/lualine.lua</code></a>:
+statusline</li>
+</ul>
+<h3 id="navigazione-e-ricerca">Navigazione E Ricerca</h3>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/telescope.lua"><code>lua/myconf/plugins/telescope.lua</code></a>:
+picker principali, <code>file_browser</code>, <code>zoxide</code>,
+<code>fzf</code></li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/fzf.lua"><code>lua/myconf/plugins/fzf.lua</code></a>:
+<code>fzf-lua</code> come alternativa rapida</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/nvim-tree.lua"><code>lua/myconf/plugins/nvim-tree.lua</code></a>:
+explorer laterale</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/smart-splits.lua"><code>lua/myconf/plugins/smart-splits.lua</code></a>:
+resize, swap buffer e integrazione con WezTerm</li>
+</ul>
+<h3 id="editing">Editing</h3>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/treesitter.lua"><code>lua/myconf/plugins/treesitter.lua</code></a>:
+parser, highlighting, incremental selection</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/after/queries/ecma/textobjects.scm"><code>after/queries/ecma/textobjects.scm</code></a>:
+query custom Treesitter per textobject su proprieta' JS/TS</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/nvim-cmp.lua"><code>lua/myconf/plugins/nvim-cmp.lua</code></a>:
+completamento e snippet</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/conform.lua"><code>lua/myconf/plugins/conform.lua</code></a>:
+formatter per filetype</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/nvim-lint.lua"><code>lua/myconf/plugins/nvim-lint.lua</code></a>:
+linter su autocmd</li>
+</ul>
+<h3 id="lsp">LSP</h3>
+<ul>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/lsp/mason.lua"><code>lua/myconf/plugins/lsp/mason.lua</code></a>:
+installazione tool e language server</li>
+<li><a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/lsp/lspconfig.lua"><code>lua/myconf/plugins/lsp/lspconfig.lua</code></a>:
+enable dei server, override e keymap su <code>LspAttach</code></li>
+</ul>
+<h2 id="come-funziona-lazynvim-in-questo-setup">Come Funziona
+<code>lazy.nvim</code> In Questo Setup</h2>
+<p>Qui <code>lazy.nvim</code> fa tre cose:</p>
+<ol type="1">
+<li>bootstrap del plugin manager</li>
+<li>import di tutte le plugin spec</li>
+<li>lazy-loading vero e proprio tramite <code>event</code>,
+<code>ft</code>, <code>cmd</code> e <code>keys</code></li>
+</ol>
+<p>Scelte importanti del setup:</p>
+<ul>
+<li><code>checker.enabled = true</code>: controlla aggiornamenti
+plugin</li>
+<li><code>change_detection.notify = false</code>: niente spam di
+notifiche quando modifichi i file di config</li>
+<li><code>lazy-lock.json</code>: blocca le versioni installate</li>
+</ul>
+<p>Comandi utili:</p>
+<ul>
+<li><code>:Lazy</code>: pannello principale</li>
+<li><code>:Lazy sync</code>: installa/aggiorna e riallinea i plugin</li>
+<li><code>:Lazy restore</code>: ripristina le versioni del lockfile</li>
+</ul>
+<h3 id="aggiungere-un-plugin">Aggiungere Un Plugin</h3>
+<p>Per aggiungere un plugin nuovo:</p>
+<ol type="1">
+<li>crea un file in <code>lua/myconf/plugins/</code> oppure
+<code>lua/myconf/plugins/lsp/</code></li>
+<li>fai ritornare una spec <code>lazy.nvim</code></li>
+<li>preferisci sempre un trigger lazy (<code>event</code>,
+<code>ft</code>, <code>cmd</code>, <code>keys</code>) se il plugin non
+serve all'avvio</li>
+<li>esegui <code>:Lazy sync</code></li>
+</ol>
+<p>Esempio minimale:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode lua"><code class="sourceCode lua"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>   <span class="st">&quot;folke/which-key.nvim&quot;</span><span class="op">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>   <span class="va">event</span> <span class="op">=</span> <span class="st">&quot;VeryLazy&quot;</span><span class="op">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>   <span class="va">opts</span> <span class="op">=</span> <span class="op">{},</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Se una modifica e' solo di runtime UI/tema puoi spesso usare
+<code>:ReloadConfig</code>; se tocchi plugin spec, dipendenze o
+bootstrap e' meglio fare <code>:Lazy sync</code> o riavviare Neovim.</p>
+<h2 id="lsp-mason-formatter-e-linter">LSP, Mason, Formatter E
+Linter</h2>
+<h3 id="lsp-1">LSP</h3>
+<p>Questo setup separa installazione e attivazione:</p>
+<ul>
+<li><code>Mason</code> installa server e tool</li>
+<li><code>lspconfig</code> decide quali server abilitare davvero e con
+quali override</li>
+</ul>
+<p>In <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/lsp/lspconfig.lua"><code>lua/myconf/plugins/lsp/lspconfig.lua</code></a>:</p>
+<ul>
+<li>i server vengono elencati in <code>servers</code></li>
+<li>le eccezioni stanno in <code>server_overrides</code></li>
+<li>tutti ricevono le capability di <code>cmp-nvim-lsp</code></li>
+<li>le keymap LSP vengono registrate su <code>LspAttach</code>, quindi
+sono buffer-local</li>
+</ul>
+<h3 id="aggiungere-un-nuovo-language-server">Aggiungere Un Nuovo
+Language Server</h3>
+<p>Flusso consigliato:</p>
+<ol type="1">
+<li>aggiungi il package in <code>ensure_installed</code> di
+<code>mason-lspconfig</code> se vuoi auto-installarlo</li>
+<li>aggiungi il nome del server nella lista <code>servers</code></li>
+<li>crea un override in <code>server_overrides</code> solo se servono
+<code>filetypes</code>, <code>cmd</code>, <code>settings</code> o
+<code>root_markers</code></li>
+</ol>
+<p>Esempio concettuale:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode lua"><code class="sourceCode lua"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- mason.lua</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="va">ensure_installed</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>   <span class="st">&quot;ts_ls&quot;</span><span class="op">,</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- lspconfig.lua</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="kw">local</span> <span class="va">servers</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>   <span class="st">&quot;ts_ls&quot;</span><span class="op">,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="kw">local</span> <span class="va">server_overrides</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>   <span class="va">ts_ls</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>      <span class="va">settings</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>         <span class="co">-- ...</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>      <span class="op">},</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>   <span class="op">},</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Nota importante: qui
+<code>mason_lspconfig.setup({ automatic_enable = false })</code> e'
+intenzionale. L'abilitazione reale dei server avviene in
+<code>lspconfig.lua</code>, non in <code>Mason</code>.</p>
+<h3 id="formatter">Formatter</h3>
+<p>Il formatting e' gestito da <code>conform.nvim</code> in <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/conform.lua"><code>lua/myconf/plugins/conform.lua</code></a>.</p>
+<p>Pattern del setup:</p>
+<ul>
+<li>mappa filetype -&gt; formatter in <code>formatters_by_ft</code></li>
+<li>eventuali formatter custom vengono definiti in
+<code>formatters</code></li>
+<li>formatting manuale su <code>&lt;leader&gt;fi</code></li>
+<li><code>lsp_fallback = true</code> come fallback, non come prima
+scelta</li>
+</ul>
+<p>Per aggiungere un formatter:</p>
+<ol type="1">
+<li>aggiungi il tool a <code>mason-tool-installer</code> se vuoi
+auto-installarlo</li>
+<li>aggiungi la coppia filetype -&gt; formatter in
+<code>formatters_by_ft</code></li>
+<li>se servono binario custom o argomenti custom, definiscilo in
+<code>formatters</code></li>
+</ol>
+<h3 id="linter">Linter</h3>
+<p>Il linting e' gestito da <code>nvim-lint</code> in <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/myconf/plugins/nvim-lint.lua"><code>lua/myconf/plugins/nvim-lint.lua</code></a>.</p>
+<p>Pattern del setup:</p>
+<ul>
+<li>mappa filetype -&gt; linter in <code>linters_by_ft</code></li>
+<li><code>try_lint()</code> viene eseguito su <code>BufEnter</code>,
+<code>BufWritePost</code>, <code>InsertLeave</code></li>
+<li>trigger manuale su <code>&lt;leader&gt;ll</code></li>
+</ul>
+<p>Per aggiungere un linter:</p>
+<ol type="1">
+<li>aggiungi il tool a <code>mason-tool-installer</code> se deve essere
+auto-installato</li>
+<li>registra il filetype in <code>linters_by_ft</code></li>
+</ol>
+<h2 id="comandi-utili-per-lavorare-sulla-config">Comandi Utili Per
+Lavorare Sulla Config</h2>
+<ul>
+<li><code>:ConfigEdit</code>: apre un file della config con
+selettore</li>
+<li><code>:ConfigVars</code>: apre
+<code>lua/configuration.lua</code></li>
+<li><code>:ReloadConfig</code>: ricarica tema e moduli leggeri</li>
+<li><code>:Lazy</code>: pannello plugin</li>
+<li><code>:Mason</code>: pannello tool/LSP</li>
+</ul>
+<h2 id="dipendenze-strettamente-necessarie">Dipendenze Strettamente
+Necessarie</h2>
+<p>Questa sezione distingue tra:</p>
+<ul>
+<li>dipendenze che servono davvero per avviare e installare il setup
+base</li>
+<li>dipendenze introdotte dalla mia config custom</li>
+<li>dipendenze introdotte dai plugin attivi</li>
+</ul>
+<h3 id="hard-requirement-del-setup-base">Hard Requirement Del Setup
+Base</h3>
+<table>
+<thead>
+<tr>
+<th>Dipendenza</th>
+<th>Perche' serve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nvim</code> 0.11+</td>
+<td>il setup usa API recenti come <code>vim.lsp.config()</code> /
+<code>vim.lsp.enable()</code></td>
+</tr>
+<tr>
+<td><code>git</code></td>
+<td>bootstrap iniziale di <code>lazy.nvim</code> e installazione
+plugin</td>
+</tr>
+<tr>
+<td><code>make</code></td>
+<td>build di plugin nativi come <code>telescope-fzf-native</code> e
+<code>LuaSnip</code></td>
+</tr>
+<tr>
+<td>toolchain C/C++ (<code>clang</code> o <code>gcc</code>)</td>
+<td>necessaria per build native e parser Treesitter</td>
+</tr>
+<tr>
+<td><code>~/.config/theme/colors.lua</code></td>
+<td>richiesto da <code>lua/myconf/theme/palette.lua</code>; senza questo
+file il tema non parte, anche se <code>tokyonight</code> viene
+installato automaticamente da <code>lazy.nvim</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="dipendenze-della-mia-config">Dipendenze Della Mia Config</h3>
+<p>Queste non arrivano da un plugin "generico": servono per comandi
+custom o per scelte esplicite di questa config.</p>
+<table>
+<thead>
+<tr>
+<th>Dipendenza</th>
+<th>Dove viene usata</th>
+<th>Se la togli</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>zoxide</code></td>
+<td><code>:Z</code></td>
+<td>il comando custom per saltare tra directory non funziona</td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>:CodexHere*</code></td>
+<td>il comando fallisce con check su
+<code>executable("codex")</code></td>
+</tr>
+<tr>
+<td><code>~/.config/latexindent/config.yaml</code></td>
+<td>formatter TeX in <code>conform.nvim</code></td>
+<td>il formatter TeX configurato non parte come previsto</td>
+</tr>
+<tr>
+<td><code>mypandoc</code></td>
+<td><code>:PandocExport</code></td>
+<td>il comando custom di export non funziona</td>
+</tr>
+<tr>
+<td><code>code</code></td>
+<td><code>:Code</code></td>
+<td>il comando che apre VS Code non funziona</td>
+</tr>
+<tr>
+<td><code>op</code></td>
+<td><code>:Open</code></td>
+<td>il comando basato su 1Password CLI non funziona</td>
+</tr>
+<tr>
+<td><code>tmux</code></td>
+<td>mapping <code>&lt;leader&gt;lt</code> che apre <code>lazygit</code>
+in una nuova finestra</td>
+<td>quel mapping specifico non funziona</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dipendenze-dei-plugin-attivi">Dipendenze Dei Plugin Attivi</h3>
+<p>Queste servono solo se vuoi mantenere le feature dei plugin gia'
+abilitate.</p>
+<p>Nota:</p>
+<ul>
+<li><code>fzf-lua</code> richiede il binario di sistema <code>fzf</code>
+nel <code>PATH</code>; <code>telescope-fzf-native</code> e' una cosa
+separata e copre solo l'estensione fuzzy di Telescope</li>
+<li><code>tokyonight</code> non e' una dipendenza esterna da installare
+a mano; la dipendenza reale del tema resta
+<code>~/.config/theme/colors.lua</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Dipendenza</th>
+<th>Plugin / feature</th>
+<th>Se la togli</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fd</code></td>
+<td><code>telescope.nvim</code> <code>find_files</code></td>
+<td>il picker file configurato con <code>fd</code> smette di funzionare
+correttamente</td>
+</tr>
+<tr>
+<td><code>rg</code></td>
+<td><code>telescope.nvim</code> <code>live_grep</code> /
+<code>grep_string</code></td>
+<td>perdi la parte search basata su ripgrep</td>
+</tr>
+<tr>
+<td><code>fzf</code></td>
+<td><code>ibhagwan/fzf-lua</code> (<code>&lt;leader&gt;zf</code>,
+<code>&lt;leader&gt;zs</code>, <code>&lt;leader&gt;zb</code>)</td>
+<td><code>fzf-lua</code> non parte</td>
+</tr>
+<tr>
+<td><code>zoxide</code></td>
+<td><code>jvgrootveld/telescope-zoxide</code></td>
+<td>il picker zoxide di Telescope non funziona</td>
+</tr>
+<tr>
+<td><code>lazygit</code></td>
+<td><code>kdheepak/lazygit.nvim</code> e mapping git</td>
+<td>la UI git non si apre</td>
+</tr>
+<tr>
+<td><code>wezterm</code></td>
+<td><code>mrjones2014/smart-splits.nvim</code> per i pane esterni</td>
+<td>i mapping <code>&lt;C-S-h/j/k/l&gt;</code> verso pane WezTerm non
+funzionano</td>
+</tr>
+<tr>
+<td><code>latexmk</code></td>
+<td><code>vimtex</code> e <code>texlab</code></td>
+<td>salta compilazione LaTeX e integrazione TeX corrente</td>
+</tr>
+<tr>
+<td><code>sioyek</code></td>
+<td><code>vimtex</code> con <code>\\lv</code></td>
+<td>il workflow PDF LaTeX perde il viewer previsto</td>
+</tr>
+<tr>
+<td><code>node</code></td>
+<td><code>copilot.lua</code>, <code>CopilotChat.nvim</code>,
+<code>prettier</code>, <code>eslint_d</code></td>
+<td>Copilot e parte del toolchain JS non partono</td>
+</tr>
+<tr>
+<td><code>python3</code></td>
+<td>wrapper Mason di <code>jdtls</code></td>
+<td>il server Java non si avvia</td>
+</tr>
+<tr>
+<td><code>java</code> / JDK 21+</td>
+<td><code>jdtls</code></td>
+<td>il server Java non si avvia o fallisce il controllo versione</td>
+</tr>
+<tr>
+<td><code>latexindent</code></td>
+<td><code>conform.nvim</code> per <code>tex</code></td>
+<td>perdi il formatter TeX configurato</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dipendenze-per-platform-da-tenere-docchio">Dipendenze
+Per-Platform Da Tenere D'Occhio</h3>
+<p>I riferimenti platform-specific non stanno piu' sparsi nei plugin:
+passano da <code>conf.external</code> in <a
+href="https://github.com/kevinmuka/nvim/blob/main/lua/configuration.lua"><code>lua/configuration.lua</code></a>,
+con fallback al <code>PATH</code> e, dove utile, ai path macOS piu'
+comuni.</p>
+<table>
+<thead>
+<tr>
+<th>Dipendenza / path</th>
+<th>Stato attuale</th>
+<th>Impatto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sioyek app bundle macOS</td>
+<td>fallback solo su macOS; su Linux e' preferito <code>sioyek</code> da
+<code>PATH</code></td>
+<td>viewer PDF LaTeX via <code>vimtex</code></td>
+</tr>
+<tr>
+<td><code>open -R</code></td>
+<td>usato solo su macOS dentro <code>shell.reveal_path()</code></td>
+<td>su Linux c'e' fallback a <code>xdg-open</code>, su Windows a
+<code>explorer.exe</code></td>
+</tr>
+<tr>
+<td><code>xdg-open</code></td>
+<td>richiesto solo su Linux per <code>:Finder</code> e reveal in
+<code>nvim-tree</code></td>
+<td>non serve su macOS o Windows</td>
+</tr>
+<tr>
+<td><code>explorer.exe</code></td>
+<td>richiesto solo su Windows per <code>:Finder</code> e reveal in
+<code>nvim-tree</code></td>
+<td>non serve su macOS o Linux</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nota-su-mason">Nota Su Mason</h3>
+<p><code>Mason</code> installa automaticamente una parte dei server e
+dei tool dichiarati nel repo, ma non va confuso con le dipendenze hard
+requirement del bootstrap.</p>
+<p>In questo setup vengono richiesti automaticamente almeno:</p>
+<ul>
+<li>LSP installati da Mason: <code>html</code>, <code>cssls</code>,
+<code>svelte</code>, <code>lua_ls</code>, <code>graphql</code>,
+<code>emmet_ls</code>, <code>prismals</code>, <code>pyright</code>,
+<code>gopls</code>, <code>jdtls</code>, <code>clangd</code>,
+<code>texlab</code></li>
+<li>tool: <code>prettier</code>, <code>stylua</code>,
+<code>isort</code>, <code>black</code>, <code>pylint</code>,
+<code>eslint_d</code>, <code>clang-format</code>,
+<code>latexindent</code></li>
+</ul>
+<p>Questi fanno parte del workflow editoriale che il repo si aspetta, ma
+non tutti sono indispensabili per "aprire Neovim". Alcuni richiedono
+anche runtime esterni reali:</p>
+<ul>
+<li><code>jdtls</code> richiede <code>python3</code> e un
+<code>java</code> compatibile, nel tuo setup almeno Java 21</li>
+<li><code>prettier</code> ed <code>eslint_d</code> richiedono
+<code>node</code></li>
+<li><code>latexindent</code> e' installato da Mason, ma questa config
+gli passa anche <code>~/.config/latexindent/config.yaml</code></li>
+</ul>
+<h2 id="convenzioni-del-progetto">Convenzioni Del Progetto</h2>
+<p>Se estendi questa config, conviene mantenere queste regole:</p>
+<ul>
+<li>un file plugin = una responsabilita' chiara</li>
+<li>toggle globali piccoli in <code>lua/configuration.lua</code>, non
+sparsi nei plugin</li>
+<li>moduli <code>core</code> senza side effect oscuri: meglio
+<code>setup()</code> espliciti</li>
+<li>usare lazy-loading per quasi tutto cio' che non serve al
+bootstrap</li>
+<li>evitare path assoluti di piattaforma se non strettamente
+necessari</li>
+<li>se aggiungi una feature con dipendenze esterne, documentala qui</li>
+</ul>
+<h2 id="bootstrap-rapido">Bootstrap Rapido</h2>
+<p>Su una macchina nuova il percorso minimo e':</p>
+<ol type="1">
+<li>installare gli hard requirement della sezione sopra</li>
+<li>posizionare questa config in <code>~/.config/nvim</code></li>
+<li>verificare che esista <code>~/.config/theme/colors.lua</code></li>
+<li>aprire <code>nvim</code></li>
+<li>eseguire <code>:Lazy sync</code></li>
+<li>aprire <code>:Mason</code> e verificare che server e tool necessari
+siano installati</li>
+</ol>
+<h2 id="cose-da-migliorare-in-futuro">Cose Da Migliorare In Futuro</h2>
+<p>I punti tecnici piu' ovvi da ripulire sono:</p>
+<ul>
+<li>chiarire se <code>fzf-lua</code> deve rimanere come alternativa a
+Telescope o se va ridotto</li>
+<li>documentare eventuali dipendenze del file
+<code>~/.config/theme/colors.lua</code> se diventa condiviso tra piu'
+dotfiles</li>
+</ul>
+</article>
+</div></main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
+</body>
+</html>

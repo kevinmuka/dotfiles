@@ -1,34 +1,57 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="macbackup is a personal backup tool that runs locally on a Mac and saves selected files to the owner's cloud accounts.">
-  <title>macbackup — Personal Mac backups</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A personal Mac backup tool using rclone, encrypted private areas and explicit history management.">
+<title>macbackup — kevinmuka / dotfiles</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
 </head>
 <body>
-  <header><a class="brand" href="index.html">macbackup</a><nav aria-label="Main navigation"><a href="privacy.html">Privacy policy</a></nav></header>
-  <main>
-    <p class="eyebrow">Personal backup utility</p>
-    <h1>Selected Mac files, backed up to the owner's cloud.</h1>
-    <p class="lead">macbackup runs locally on a Mac. It uses rclone to copy selected folders and files directly to cloud storage accounts controlled by the owner.</p>
-    <section>
-      <h2>How it works</h2>
-      <p>The owner chooses the files to back up, the files to exclude, and which files to encrypt before transfer. Readable backups can be consulted through Google Drive. Private backups are encrypted locally using rclone crypt.</p>
-      <p>Previous versions are kept in a backup history. The owner controls the backup configuration and removal of stored copies.</p>
-    </section>
-    <section>
-      <h2>Google Drive access</h2>
-      <p>The application uses Google OAuth to obtain permission to manage backup files authorized to the application, using the <code>drive.file</code> scope. This access is used to create, read, update and delete the backup files managed by macbackup.</p>
-      <p>Google authorization takes place in the browser. Backup transfers go directly between the owner's Mac and the configured storage provider.</p>
-    </section>
-    <section>
-      <h2>Privacy and contact</h2>
-      <p>Read the <a href="privacy.html">privacy policy</a> for details about data use, storage and revoking access.</p>
-      <p>Support: <a href="mailto:kevinmuka03@gmail.com">kevinmuka03@gmail.com</a></p>
-    </section>
-  </main>
-  <footer>macbackup · Personal use · <a href="privacy.html">Privacy policy</a></footer>
+<header class="site-header"><div class="wrap header-inner">
+<a class="brand" href="../"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+<nav class="top-nav" aria-label="Main navigation"><a href="../">Overview</a><a href="../macbackup/" aria-current="page">macbackup</a><a href="../nvim/">Neovim</a><a href="../symlinks/">Symlinks</a><a href="../theme/">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
+</div></header>
+<main>
+<div class="wrap page-hero">
+<p class="eyebrow">macbackup / personal utility</p>
+<h1>A backup you can inspect and recover.</h1>
+<p class="lead">macbackup runs locally on the owner's Mac. It selects files by explicit rules, transfers them with rclone to the owner's configured storage, and keeps previous copies in a separate history.</p>
+<div class="actions"><a class="button primary" href="docs/">Read the full manual</a><a class="button" href="privacy.html">Privacy policy</a><a class="text-link" href="https://github.com/kevinmuka/dotfiles/tree/main/home/.config/scripts">View source</a></div>
+</div>
+<section class="section"><div class="wrap">
+<div class="section-head"><div><p class="eyebrow">Two areas</p><h2>Readable where useful. Encrypted where needed.</h2></div><p>The destination follows the original Mac path, so a file can be found again without inventing a second folder scheme.</p></div>
+<div class="split">
+<div class="panel"><span class="chip">PLAIN</span><h3 style="margin-top:22px">Files you can open</h3><p>Selected documents remain readable in the owner's Google Drive account, including from a phone when the provider supports the file type.</p></div>
+<div class="panel"><span class="chip blue">PRIVATE</span><h3 style="margin-top:22px">Credentials stay encrypted</h3><p>Private paths, such as SSH and rclone configuration, are encrypted locally with rclone crypt before upload. Git metadata is routed to this area by policy.</p></div>
+</div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">A deliberate workflow</p><h2>Inspect. Run. Recover.</h2><p class="lead">The selector is local. Cloud checks and transfers are separate operations. Excluding a path later stops future updates; removing copies already in current or history is an explicit step.</p><div class="actions"><a class="button" href="docs/">Commands and examples</a></div></div>
+<div class="code-window"><div class="label">terminal / example commands</div><pre>macbackup check
+macbackup preview --target google
+macbackup run --target google
+macbackup status
+
+macbackup versions ~/Documents/example.txt \
+  --target google</pre></div>
+</div></section>
+<section class="section"><div class="wrap">
+<div class="section-head"><div><p class="eyebrow">What the backup keeps</p><h2>Current files and changed copies.</h2></div><p>History is organized by run. Each history folder holds files replaced or removed during that run; it is not a complete snapshot of every folder.</p></div>
+<div class="flow">
+<div class="flow-step"><span class="index">01 / SELECT</span><h3>Paths and rules</h3><p>Plain, private and exclusion lists are combined with names that require exact inclusion, such as .env files.</p></div>
+<div class="flow-step"><span class="index">02 / TRANSFER</span><h3>Visible progress</h3><p>Run shows byte and file progress, speed and active paths. Interrupted runs retain their last available partial counters.</p></div>
+<div class="flow-step"><span class="index">03 / RECOVER</span><h3>Explicit choices</h3><p>Versions, restore, verify and forget let the owner inspect copies and choose recovery or removal.</p></div>
+</div>
+</div></section>
+<section class="section"><div class="wrap split">
+<div><p class="eyebrow">Google OAuth</p><h2>Access to the owner's backup files.</h2><p>The application uses Google OAuth with the <code>drive.file</code> scope to create, list, read, update and delete backup files authorized to it. Authorization happens in the browser; file transfers run directly between the Mac and the storage provider.</p><p>This website is informational. It does not sign in to the owner's account or host the backups.</p></div>
+<div class="panel"><span class="chip orange">PRIVACY</span><h3 style="margin-top:22px">How data is handled</h3><p>The owner controls selection, encryption keys, retention and revocation. The public privacy page explains the Google access and the website.</p><div class="actions"><a class="button" href="privacy.html">Read privacy policy</a></div><p style="margin-top:25px">Support: <a href="mailto:kevinmuka03@gmail.com">kevinmuka03@gmail.com</a></p></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Static documentation on GitHub Pages</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a><a href="../macbackup/privacy.html">macbackup privacy</a></div></div></footer>
 </body>
 </html>
