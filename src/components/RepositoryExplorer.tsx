@@ -5,7 +5,7 @@ import { repositories } from '../data/repositories';
 import type { RepositoryKey } from '../data/repositories';
 import type { TreeEntry } from '../lib/repositories';
 
-type Props = { repo: RepositoryKey; selectedPath: string };
+type Props = { repo: RepositoryKey; selectedPath: string; initialTree: TreeEntry[] | null };
 type Node = { name: string; path: string; type: TreeEntry['type']; children: Node[] };
 
 function buildTree(entries: TreeEntry[]): Node[] {
@@ -34,24 +34,45 @@ function ancestors(path: string) {
   return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
 }
 
-export default function RepositoryExplorer({ repo, selectedPath }: Props) {
-  const [entries, setEntries] = useState<TreeEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function RepositoryExplorer({ repo, selectedPath, initialTree }: Props) {
+  const [activePath, setActivePath] = useState(selectedPath);
+  const [entries, setEntries] = useState<TreeEntry[]>(initialTree ?? []);
+  const [loading, setLoading] = useState(!initialTree);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<Set<string>>(() => new Set(ancestors(selectedPath)));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(ancestors(activePath)));
   const searchRef = useRef<HTMLInputElement>(null);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    const selectedDirectory = entries.some((entry) => entry.path === selectedPath && entry.type === 'tree') ? [selectedPath] : [];
-    setOpen((previous) => new Set([...previous, ...ancestors(selectedPath), ...selectedDirectory]));
-  }, [selectedPath, entries]);
+    const updatePath = () => {
+      const prefix = `/explore/${repo}`;
+      const pathname = window.location.pathname;
+      if (pathname === prefix) setActivePath('README.md');
+      else if (pathname.startsWith(`${prefix}/`)) {
+        setActivePath(pathname.slice(prefix.length + 1).split('/').map(decodeURIComponent).join('/'));
+      }
+    };
+    document.addEventListener('astro:after-swap', updatePath);
+    return () => document.removeEventListener('astro:after-swap', updatePath);
+  }, [repo]);
+
+  useEffect(() => {
+    const selectedDirectory = entries.some((entry) => entry.path === activePath && entry.type === 'tree') ? [activePath] : [];
+    setOpen((previous) => new Set([...previous, ...ancestors(activePath), ...selectedDirectory]));
+  }, [activePath, entries]);
 
   useEffect(() => {
     const controller = new AbortController();
     setQuery('');
     const cacheKey = `dotfiles-tree-${repo}`;
+    if (initialTree) {
+      setEntries(initialTree);
+      setLoading(false);
+      setError('');
+      try { sessionStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), tree: initialTree })); } catch { /* Cache is optional. */ }
+      return () => controller.abort();
+    }
     try {
       const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null') as { at: number; tree: TreeEntry[] } | null;
       if (cached && Date.now() - cached.at < 15 * 60_000) {
@@ -75,7 +96,7 @@ export default function RepositoryExplorer({ repo, selectedPath }: Props) {
       .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'File list unavailable'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [repo]);
+  }, [repo, initialTree]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -107,7 +128,7 @@ export default function RepositoryExplorer({ repo, selectedPath }: Props) {
             <Folder size={15} aria-hidden="true" />
             <span>{node.name}</span>
           </button>
-        : <a className="tree-row" style={{ paddingLeft: `${12 + depth * 16}px` }} href={repo === 'dotfiles' && node.type === 'commit' && node.path === 'home/.config/nvim' ? '/explore/nvim' : `/explore/${repo}/${node.path.split('/').map(encodeURIComponent).join('/')}`} aria-current={selectedPath === node.path ? 'page' : undefined}>
+        : <a className="tree-row" style={{ paddingLeft: `${12 + depth * 16}px` }} href={repo === 'dotfiles' && node.type === 'commit' && node.path === 'home/.config/nvim' ? '/explore/nvim' : `/explore/${repo}/${node.path.split('/').map(encodeURIComponent).join('/')}`} aria-current={activePath === node.path ? 'page' : undefined}>
             <span className="tree-chevron" aria-hidden="true" />
             <FileCode2 size={15} aria-hidden="true" />
             <span>{node.name}</span>
@@ -132,7 +153,7 @@ export default function RepositoryExplorer({ repo, selectedPath }: Props) {
       {loading && <p className="explorer-status">Loading files…</p>}
       {error && <p className="explorer-status">{error}. <a href={`https://github.com/${repositories[repo].owner}/${repositories[repo].name}`} target="_blank" rel="noopener noreferrer">Browse on GitHub <ExternalLink size={13} aria-hidden="true" /></a></p>}
       {!loading && !error && (query.trim()
-        ? <ul className="tree-list search-results">{matches.map((entry) => <li key={entry.path}><a className="tree-row" href={`/explore/${repo}/${entry.path.split('/').map(encodeURIComponent).join('/')}`} aria-current={selectedPath === entry.path ? 'page' : undefined}><FileCode2 size={15} aria-hidden="true" /><span>{entry.path}</span></a></li>)}{matches.length === 0 && <li className="explorer-status">No matching files.</li>}</ul>
+        ? <ul className="tree-list search-results">{matches.map((entry) => <li key={entry.path}><a className="tree-row" href={`/explore/${repo}/${entry.path.split('/').map(encodeURIComponent).join('/')}`} aria-current={activePath === entry.path ? 'page' : undefined}><FileCode2 size={15} aria-hidden="true" /><span>{entry.path}</span></a></li>)}{matches.length === 0 && <li className="explorer-status">No matching files.</li>}</ul>
         : <ul className="tree-list">{nodes.map((node) => item(node, 0))}</ul>)}
     </div>
   </aside>;

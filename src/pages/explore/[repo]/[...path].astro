@@ -2,6 +2,7 @@
 import SiteLayout from '../../../layouts/SiteLayout.astro';
 import RepositoryExplorer from '../../../components/RepositoryExplorer';
 import { getFile, getTree, githubUrl, isImage, isMarkdown, isRepositoryKey, isTextFile, normalizePath, rawUrl, renderCode, renderMarkdown, repositories } from '../../../lib/repositories';
+import type { TreeEntry } from '../../../lib/repositories';
 
 export const prerender = false;
 
@@ -17,6 +18,7 @@ let rendered = '';
 let error = '';
 let kind: 'markdown' | 'code' | 'image' | 'directory' | 'submodule' | 'other' = 'other';
 let children: { path: string; type: string }[] = [];
+const treePromise: Promise<TreeEntry[] | null> = valid ? getTree(repo).catch(() => null) : Promise.resolve(null);
 if (valid) {
   try {
     if (repo === 'dotfiles' && path === 'home/.config/nvim') kind = 'submodule';
@@ -26,7 +28,8 @@ if (valid) {
       kind = isMarkdown(path) ? 'markdown' : 'code';
       rendered = kind === 'markdown' ? await renderMarkdown(repo, path, source) : await renderCode(path, source);
     } else {
-      const tree = await getTree(repo);
+      const tree = await treePromise;
+      if (!tree) throw new Error('Repository tree unavailable');
       if (tree.some((entry) => entry.path === path && entry.type === 'tree')) {
         kind = 'directory';
         children = tree.filter((entry) => entry.path.startsWith(`${path}/`) && !entry.path.slice(path.length + 1).includes('/')).sort((a, b) => (a.type === 'tree' ? 0 : 1) - (b.type === 'tree' ? 0 : 1) || a.path.localeCompare(b.path));
@@ -37,6 +40,7 @@ if (valid) {
     Astro.response.headers.set('Cache-Control', 'no-store');
   }
 }
+const initialTree = await treePromise;
 
 const meta = {
   path: valid ? `/explore/${repo}${Astro.params.path ? `/${path}` : ''}` : Astro.url.pathname,
@@ -54,7 +58,7 @@ const meta = {
         <p class="lead">{repositories[repo].description} Browse the current public files here, or visit the <a href={githubUrl(repo)}>{repositories[repo].label} repository on GitHub</a>.</p>
       </div>
       <div class="wrap explorer-layout">
-        <RepositoryExplorer client:load transition:persist="repo-explorer" repo={repo} selectedPath={path} />
+        <RepositoryExplorer client:load transition:persist={`repo-explorer-${repo}`} repo={repo} selectedPath={path} initialTree={initialTree} />
         <article class="explorer-content panel">
           <div class="explorer-filebar"><div><span class="eyebrow">{repositories[repo].label} / main</span><h2>{path}</h2></div><a class="text-link" href={kind === 'submodule' ? githubUrl('nvim') : githubUrl(repo, path, kind === 'directory')} target="_blank" rel="noopener noreferrer">View on GitHub</a></div>
           {error ? <p class="explorer-message">{error}</p>
