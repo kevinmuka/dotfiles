@@ -45,9 +45,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .nav-menu summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .18s; }
 .nav-menu[open] summary::after { transform: translateY(2px) rotate(225deg); }
 .nav-menu summary.is-current, .nav-menu[open] summary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--panel); box-shadow: 0 3px 14px color-mix(in srgb, var(--accent) 10%, transparent); }
-.nav-menu-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 60; display: grid; width: 210px; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 16px 36px #14213b25; }
-.nav-menu-panel a { display: block; padding: 9px 11px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 660; text-decoration: none; }
-.nav-menu-panel a:hover, .nav-menu-panel a[aria-current="page"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, var(--panel)); }
+.nav-menu-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 60; display: grid; gap: 3px; width: 210px; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 16px 36px #14213b25; }
+.nav-menu-panel a { position: relative; display: block; padding: 9px 23px 9px 11px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 660; text-decoration: none; transition: color .18s, background .18s; }
+.nav-menu-panel a:not([aria-current]):hover { color: var(--text); background: var(--panel-2); }
+.nav-menu-panel a[aria-current="page"] { color: var(--accent); }
+.nav-menu-panel a[aria-current="page"]::after { content: ""; position: absolute; top: 50%; right: 11px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transform: translateY(-50%); }
 .top-nav .nav-github { margin-left: 6px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .top-nav .nav-github:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
 .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .18em; font-size: 11px; font-weight: 800; }
