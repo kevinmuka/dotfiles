@@ -15,13 +15,13 @@ export interface Props {
 const { page } = Astro.props;
 const canonical = new URL(page.path, 'https://dotfiles.kevinmuka.dev').href;
 const section = page.path.split('/')[1];
-const nav = [
+const configurationNav = [
   { href: '/macbackup', label: 'macbackup', key: 'macbackup' },
   { href: '/nvim', label: 'Neovim', key: 'nvim' },
   { href: '/symlinks', label: 'Symlinks', key: 'symlinks' },
   { href: '/theme', label: 'Theme', key: 'theme' },
-  { href: '/explore/dotfiles', label: 'Explore', key: 'explore' },
 ];
+const inConfiguration = configurationNav.some((item) => item.key === section);
 ---
 <!doctype html>
 <html lang={page.lang} transition:name="root" transition:animate="none">
@@ -73,8 +73,14 @@ const nav = [
         <a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
         <div class="header-actions">
           <nav aria-label="Main navigation" class="top-nav">
-            {nav.map((item) => <a href={item.href} aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
-            <a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a>
+            <details class="nav-menu">
+              <summary class:list={{ 'is-current': inConfiguration }}>Configurations <span aria-hidden="true">⌄</span></summary>
+              <div class="nav-menu-panel">
+                {configurationNav.map((item) => <a href={item.href} aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
+              </div>
+            </details>
+            <a href="/explore/dotfiles" aria-current={section === 'explore' ? 'page' : undefined}>Explore</a>
+            <a class="nav-github" href="https://github.com/kevinmuka/dotfiles" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
           </nav>
           <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme" title="Switch color theme"><span aria-hidden="true" data-theme-icon>☾</span></button>
         </div>

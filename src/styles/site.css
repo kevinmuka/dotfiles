@@ -37,6 +37,14 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .top-nav a { padding: 8px 12px; color: var(--muted); font-size: 13px; font-weight: 630; text-decoration: none; border-radius: 8px; transition: padding .2s; }
 .site-header.is-compact .top-nav a { padding-block: 6px; }
 .top-nav a:hover, .top-nav a[aria-current="page"] { color: var(--text); background: #e7edfa; }
+.nav-menu { position: relative; }
+.nav-menu summary { display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 630; line-height: 1.65; cursor: pointer; list-style: none; }
+.nav-menu summary::-webkit-details-marker { display: none; }
+.nav-menu summary:hover, .nav-menu summary.is-current, .nav-menu[open] summary { color: var(--text); background: #e7edfa; }
+.nav-menu summary span { color: var(--accent); transition: transform .18s; }
+.nav-menu[open] summary span { transform: rotate(180deg); }
+.nav-menu-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 60; display: grid; width: 210px; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 16px 36px #14213b25; }
+.nav-menu-panel a { display: block; }
 .top-nav .nav-github { margin-left: 8px; color: var(--accent); border: 1px solid #9fb4ea; }
 .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .18em; font-size: 11px; font-weight: 800; }
 h1, h2, h3, h4 { line-height: 1.14; letter-spacing: -.035em; }
@@ -165,9 +173,10 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
   .header-inner { align-items: flex-start; flex-direction: column; gap: 8px; padding-block: 15px; }
   .site-header.is-compact .header-inner { gap: 4px; padding-block: 8px; }
   .top-nav { justify-content: flex-start; gap: 0; margin-left: -10px; }
-  .top-nav a { padding: 6px 10px; font-size: 12px; }
+  .top-nav a, .nav-menu summary { padding: 6px 10px; font-size: 12px; }
   .site-header.is-compact .top-nav a { padding-block: 4px; }
   .top-nav .nav-github { margin-left: 0; }
+  .nav-menu-panel { left: 0; right: auto; }
   .cards, .flow, .split { grid-template-columns: 1fr; }
   .product-title { gap: 14px; }
   .product-title h1 { font-size: clamp(2.35rem, 10vw, 3rem); }
@@ -222,6 +231,9 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 :root[data-theme="dark"] .site-header.is-compact { background: #0e1725f5; box-shadow: 0 10px 30px #050a1680; }
 :root[data-theme="dark"] .top-nav a:hover,
 :root[data-theme="dark"] .top-nav a[aria-current="page"] { background: #293a58; }
+:root[data-theme="dark"] .nav-menu summary:hover,
+:root[data-theme="dark"] .nav-menu summary.is-current,
+:root[data-theme="dark"] .nav-menu[open] summary { background: #293a58; }
 :root[data-theme="dark"] .top-nav .nav-github { border-color: #637bab; }
 :root[data-theme="dark"] .lead,
 :root[data-theme="dark"] .doc-content p,

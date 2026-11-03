@@ -50,12 +50,12 @@ const meta = {
 };
 ---
 <SiteLayout page={meta}>
-  <main transition:name="page-content">
+  <main transition:name="page-content" data-explorer data-repo={repo || undefined}>
     {valid ? <>
       <div class="wrap explorer-intro">
         <p class="eyebrow">Explore the source / {repositories[repo].label}</p>
         <h1>Inside <strong>{repositories[repo].label}.</strong></h1>
-        <p class="lead">{repositories[repo].description} Browse the current public files here, or visit the <a href={githubUrl(repo)}>{repositories[repo].label} repository on GitHub</a>.</p>
+        <p class="lead">{repositories[repo].description} Browse the current public files here, or visit the <a href={githubUrl(repo)} target="_blank" rel="noopener noreferrer">{repositories[repo].label} repository on GitHub</a>.</p>
       </div>
       <div class="wrap explorer-layout">
         <RepositoryExplorer client:load transition:persist={`repo-explorer-${repo}`} repo={repo} selectedPath={path} initialTree={initialTree} />
@@ -65,7 +65,7 @@ const meta = {
             : kind === 'image' ? <div class="explorer-image"><img src={rawUrl(repo, path)} alt={`Preview of ${path}`} /></div>
             : kind === 'submodule' ? <div class="explorer-message"><p>This path points to the separate nvim repository.</p><a class="button primary" href="/explore/nvim">Explore nvim</a></div>
             : kind === 'directory' ? <div class="explorer-directory"><p>Files and folders in this directory:</p><ul>{children.map((child) => <li><a href={`/explore/${repo}/${child.path.split('/').map(encodeURIComponent).join('/')}`}>{child.type === 'tree' ? '▸' : '▤'} &nbsp; {child.path.slice(path.length + 1)}</a></li>)}</ul></div>
-            : kind === 'other' ? <p class="explorer-message">This file type does not have an in-page preview. <a href={githubUrl(repo, path)}>Open it on GitHub ↗</a></p>
+            : kind === 'other' ? <p class="explorer-message">This file type does not have an in-page preview. <a href={githubUrl(repo, path)} target="_blank" rel="noopener noreferrer">Open it on GitHub ↗</a></p>
             : <div class={kind === 'markdown' ? 'repository-markdown' : 'repository-code'} set:html={rendered} />}
         </article>
       </div>

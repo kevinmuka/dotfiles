@@ -1,5 +1,19 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 let codeObserver: IntersectionObserver | undefined;
+let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: boolean } | null = null;
+
+function updateExternalLinks() {
+  document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+    if ((link.protocol !== 'http:' && link.protocol !== 'https:') || link.origin === location.origin) return;
+    link.target = '_blank';
+    link.rel = [...new Set([...link.rel.split(/\s+/).filter(Boolean), 'noopener', 'noreferrer'])].join(' ');
+  });
+}
+
+function closeNavigationMenu(event: MouseEvent) {
+  if (event.target instanceof Element && event.target.closest('.nav-menu')) return;
+  document.querySelector<HTMLDetailsElement>('.nav-menu[open]')?.removeAttribute('open');
+}
 
 function updateHeader() {
   document.querySelector('.site-header')?.classList.toggle('is-compact', scrollY > 48);
@@ -48,6 +62,7 @@ function isGuideLanguageSwitch(from: URL, to: URL) {
 document.addEventListener('astro:page-load', () => {
   updateHeader();
   updateThemeButton();
+  updateExternalLinks();
   setupCodePreviews();
 });
 
@@ -55,11 +70,59 @@ document.addEventListener('astro:before-swap', (event) => {
   event.newDocument.documentElement.dataset.theme = document.documentElement.dataset.theme;
   event.newDocument.documentElement.classList.add('js-motion');
   event.newDocument.documentElement.dataset.routeMotion = isGuideLanguageSwitch(event.from, event.to) ? 'none' : 'fade';
+
+  const current = document.querySelector<HTMLElement>('main[data-explorer]');
+  const next = event.newDocument.querySelector<HTMLElement>('main[data-explorer]');
+  const currentIntro = current?.querySelector<HTMLElement>('.explorer-intro');
+  const nextIntro = next?.querySelector<HTMLElement>('.explorer-intro');
+  const currentSidebar = current?.querySelector<HTMLElement>('.explorer-sidebar');
+  const nextSidebar = next?.querySelector<HTMLElement>('.explorer-sidebar');
+  const currentArticle = current?.querySelector<HTMLElement>('.explorer-content');
+  const nextArticle = next?.querySelector<HTMLElement>('.explorer-content');
+  if (!current || !next || !currentIntro || !nextIntro || !currentSidebar || !nextSidebar || !currentArticle || !nextArticle) return;
+
+  const layout = current.querySelector<HTMLElement>('.explorer-layout');
+  explorerScroll = event.navigationType === 'traverse' || !layout ? null : {
+    x: scrollX,
+    y: scrollY,
+    layoutTop: layout.getBoundingClientRect().top + scrollY,
+    repoChanged: current.dataset.repo !== next.dataset.repo,
+  };
+  document.documentElement.dataset.routeMotion = 'none';
+  event.swap = () => {
+    document.title = event.newDocument.title;
+    for (const selector of ['link[rel="canonical"]', 'meta[name="description"]', 'meta[property="og:url"]', 'meta[property="og:title"]', 'meta[property="og:description"]']) {
+      const oldTag = document.head.querySelector(selector);
+      const newTag = event.newDocument.head.querySelector(selector);
+      if (oldTag && newTag) oldTag.replaceWith(newTag);
+    }
+    if (current.dataset.repo !== next.dataset.repo) {
+      const oldIsland = currentSidebar.closest('astro-island');
+      const newIsland = nextSidebar.closest('astro-island');
+      if (oldIsland && newIsland) oldIsland.replaceWith(newIsland);
+      currentIntro.replaceWith(nextIntro);
+    }
+    currentArticle.replaceWith(nextArticle);
+    current.dataset.repo = next.dataset.repo;
+  };
+});
+
+document.addEventListener('astro:after-swap', () => {
+  if (explorerScroll) {
+    const headerHeight = document.querySelector<HTMLElement>('.site-header')?.offsetHeight ?? 60;
+    const mobileTarget = document.querySelector<HTMLElement>(explorerScroll.repoChanged ? '.explorer-sidebar' : '.explorer-content');
+    const fileTop = Math.max(0, explorerScroll.layoutTop - headerHeight - 16);
+    const mobileTop = mobileTarget ? Math.max(0, mobileTarget.getBoundingClientRect().top + scrollY - headerHeight - 16) : fileTop;
+    const top = matchMedia('(max-width: 850px)').matches ? mobileTop : Math.min(explorerScroll.y, fileTop);
+    scrollTo({ left: explorerScroll.x, top, behavior: 'instant' });
+  }
+  explorerScroll = null;
 });
 
 window.addEventListener('scroll', updateHeader, { passive: true });
 
 document.addEventListener('click', (event) => {
+  closeNavigationMenu(event);
   const target = event.target;
   if (!(target instanceof Element)) return;
   const button = target.closest<HTMLButtonElement>('[data-theme-toggle]');
