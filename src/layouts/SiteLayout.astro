@@ -43,6 +43,12 @@ const nav = [
       name: 'Kevin Muka Dotfiles',
       alternateName: 'dotfiles.kevinmuka.dev',
       url: 'https://dotfiles.kevinmuka.dev/',
+      author: {
+        '@type': 'Person',
+        name: 'Kevin Muka',
+        url: 'https://kevinmuka.dev/',
+        sameAs: 'https://github.com/kevinmuka',
+      },
     })} />}
     <link rel="icon" href="/favicon.ico" sizes="any" type="image/x-icon" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -73,7 +79,7 @@ const nav = [
       </div>
     </header>
     <slot />
-    <footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a>{section === 'macbackup' && <a href="/macbackup/privacy">macbackup privacy</a>}</div></div></footer>
+    <footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka">Kevin Muka on GitHub</a><a href="https://github.com/kevinmuka/dotfiles">dotfiles repository</a>{section === 'macbackup' && <a href="/macbackup/privacy">macbackup privacy</a>}</div></div></footer>
     <script>import '../scripts/site.ts';</script>
   </body>
 </html>

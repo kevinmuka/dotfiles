@@ -261,6 +261,7 @@ p { margin: 0 0 16px; }
 .explorer-intro { padding-block: 76px 42px; }
 .explorer-intro h1 { font-size: clamp(3rem, 5.2vw, 5rem); margin-block: 16px 20px; }
 .explorer-intro h1 strong { color: var(--accent); font-weight: inherit; }
+.explorer-intro .lead a { color: var(--accent); font-weight: 700; }
 .explorer-layout { display: grid; grid-template-columns: minmax(255px, 320px) minmax(0, 1fr); align-items: start; gap: 18px; min-height: 65vh; }
 .explorer-sidebar { position: sticky; top: 85px; padding: 0; overflow: hidden; }
 .explorer-sidebar-head { padding: 18px 17px 13px; border-bottom: 1px solid var(--line); }
@@ -317,6 +318,8 @@ p { margin: 0 0 16px; }
 :root[data-theme="dark"] .repository-code pre.shiki span { color: var(--shiki-dark) !important; }
 
 .explorer-teaser { position: relative; }
+.source-links { margin: 18px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.source-links a { font-weight: 700; }
 .explorer-teaser-inner { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(32px, 6vw, 90px); align-items: center; }
 .explorer-preview { padding: 0; overflow: hidden; box-shadow: 0 20px 55px #1829461c; }
 .explorer-preview-top { display: flex; gap: 8px; padding: 15px; border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }

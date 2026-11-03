@@ -51,7 +51,7 @@ const meta = {
       <div class="wrap explorer-intro">
         <p class="eyebrow">Explore the source / {repositories[repo].label}</p>
         <h1>Inside <strong>{repositories[repo].label}.</strong></h1>
-        <p class="lead">{repositories[repo].description} Browse the current public files here, or open the original on GitHub.</p>
+        <p class="lead">{repositories[repo].description} Browse the current public files here, or visit the <a href={githubUrl(repo)}>{repositories[repo].label} repository on GitHub</a>.</p>
       </div>
       <div class="wrap explorer-layout">
         <RepositoryExplorer client:load transition:persist="repo-explorer" repo={repo} selectedPath={path} />
