@@ -1,0 +1,8 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { pages } from '../data/pages';
+const page = pages[0];
+---
+<SiteLayout page={page}>
+  <main transition:name="page-content"><Fragment set:html={page.content} /></main>
+</SiteLayout>

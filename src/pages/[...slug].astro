@@ -1,0 +1,13 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { pages } from '../data/pages';
+
+export function getStaticPaths() {
+  return pages.slice(1).map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+
+const { page } = Astro.props;
+---
+<SiteLayout page={page}>
+  <main transition:name="page-content"><Fragment set:html={page.content} /></main>
+</SiteLayout>

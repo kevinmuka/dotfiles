@@ -1,31 +1,3 @@
-<!DOCTYPE html>
-
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1" name="viewport"/>
-<meta content="Explore Kevin Muka's dotfiles, tools, experiments, and documentation in one place." name="description"/>
-<title>dotfiles - kevinmuka</title>
-<link href="https://dotfiles.kevinmuka.dev/" rel="canonical"/>
-<meta content="website" property="og:type"/>
-<meta content="https://dotfiles.kevinmuka.dev/" property="og:url"/>
-<meta content="Kevin Muka Dotfiles" property="og:site_name"/>
-<meta content="dotfiles - kevinmuka" property="og:title"/>
-<meta content="Explore Kevin Muka's dotfiles, tools, experiments, and documentation in one place." property="og:description"/>
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","name":"Kevin Muka Dotfiles","alternateName":"dotfiles.kevinmuka.dev","url":"https://dotfiles.kevinmuka.dev/"}
-</script>
-<link href="style.css" rel="stylesheet"/>
-<link href="/favicon.ico" rel="icon" sizes="any" type="image/x-icon"/>
-<link href="apple-touch-icon.png" rel="apple-touch-icon"/>
-<script defer="" src="site.js"></script>
-</head>
-<body>
-<header class="site-header"><div class="wrap header-inner">
-<a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
-<nav aria-label="Main navigation" class="top-nav"><a href="/macbackup">macbackup</a><a href="/nvim">Neovim</a><a href="/symlinks">Symlinks</a><a href="/theme">Theme</a><a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a></nav>
-</div></header>
-<main>
 <div class="wrap hero">
 <div class="hero-copy">
 <p class="eyebrow">One repository · several daily tools</p>
@@ -58,6 +30,10 @@
 <a class="card" href="/theme"><span class="index">04 / INTERFACE</span><h3>Theme and terminal</h3><p>Shared color tokens connect Zsh, WezTerm and Neovim; Karabiner and other modules shape the surrounding workflow.</p><span class="card-footer"><span>Colors · panes · keys</span><span>Explore →</span></span></a>
 </div>
 </div></section>
+<section class="section explorer-teaser"><div class="wrap explorer-teaser-inner">
+<div><p class="eyebrow">Browse the real files</p><h2>From overview to source.</h2><p class="lead">Explore the current public files in dotfiles and nvim without leaving this site. Read the README, follow the directory tree, and open the configuration behind each tool.</p><div class="actions"><a class="button primary" href="/explore/dotfiles">Explore dotfiles</a><a class="button" href="/explore/nvim">Explore nvim</a></div></div>
+<div class="panel explorer-preview" aria-label="Repository explorer preview"><div class="explorer-preview-top"><span>dotfiles / main</span><span>⌁</span><span>source browser</span></div><div class="explorer-preview-files"><a href="/explore/dotfiles/README.md">▤ &nbsp; README.md</a><a href="/explore/dotfiles/scripts/dot.sh">⌁ &nbsp; scripts/dot.sh</a><a href="/explore/dotfiles/docs/MODULES.md">▤ &nbsp; docs/MODULES.md</a><a href="/explore/nvim/init.lua">⌁ &nbsp; nvim/init.lua ↗</a></div></div>
+</div></section>
 <section class="section"><div class="wrap">
 <div class="section-head"><div><p class="eyebrow">The structure</p><h2>One source, explicit boundaries.</h2></div><p>The repository stores configuration. The symlink manager connects it to the home directory. The backup tool independently selects what should reach cloud storage.</p></div>
 <div class="flow">
@@ -76,7 +52,3 @@ macbackup preview --local
 macbackup/docs/
 nvim/docs/</pre></div>
 </div></section>
-</main>
-<footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a></div></div></footer>
-</body>
-</html>

@@ -1,0 +1,79 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import '../styles/site.css';
+
+export interface Props {
+  page: {
+    path: string;
+    title: string;
+    description: string;
+    lang: string;
+    alternates?: readonly { href: string; lang: string }[];
+  };
+}
+
+const { page } = Astro.props;
+const canonical = new URL(page.path, 'https://dotfiles.kevinmuka.dev').href;
+const section = page.path.split('/')[1];
+const nav = [
+  { href: '/macbackup', label: 'macbackup', key: 'macbackup' },
+  { href: '/nvim', label: 'Neovim', key: 'nvim' },
+  { href: '/symlinks', label: 'Symlinks', key: 'symlinks' },
+  { href: '/theme', label: 'Theme', key: 'theme' },
+  { href: '/explore/dotfiles', label: 'Explore', key: 'explore' },
+];
+---
+<!doctype html>
+<html lang={page.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={page.description} />
+    <title>{page.title}</title>
+    <link rel="canonical" href={canonical} />
+    {page.alternates?.map((alternate) => <link rel="alternate" hreflang={alternate.lang} href={alternate.href} />)}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="Kevin Muka Dotfiles" />
+    <meta property="og:title" content={page.title} />
+    <meta property="og:description" content={page.description} />
+    {page.path === '/' && <script type="application/ld+json" set:html={JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'Kevin Muka Dotfiles',
+      alternateName: 'dotfiles.kevinmuka.dev',
+      url: 'https://dotfiles.kevinmuka.dev/',
+    })} />}
+    <link rel="icon" href="/favicon.ico" sizes="any" type="image/x-icon" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script is:inline>
+      try {
+        const saved = localStorage.getItem('dotfiles-theme');
+        document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
+          ? saved
+          : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      } catch {
+        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+    </script>
+    <ClientRouter />
+  </head>
+  <body>
+    <header class="site-header" transition:name="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+        <div class="header-actions">
+          <nav aria-label="Main navigation" class="top-nav">
+            {nav.map((item) => <a href={item.href} aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
+            <a class="nav-github" href="https://github.com/kevinmuka/dotfiles">GitHub ↗</a>
+          </nav>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme" title="Switch color theme"><span aria-hidden="true" data-theme-icon>☾</span></button>
+        </div>
+      </div>
+    </header>
+    <slot />
+    <footer class="site-footer"><div class="wrap footer-inner"><span>kevinmuka / dotfiles · Configuration and documentation</span><div class="footer-links"><a href="https://github.com/kevinmuka/dotfiles">Repository</a>{section === 'macbackup' && <a href="/macbackup/privacy">macbackup privacy</a>}</div></div></footer>
+    <script>import '../scripts/site.ts';</script>
+  </body>
+</html>

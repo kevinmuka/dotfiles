@@ -1,0 +1,70 @@
+---
+import SiteLayout from '../../../layouts/SiteLayout.astro';
+import RepositoryExplorer from '../../../components/RepositoryExplorer';
+import { getFile, getTree, githubUrl, isImage, isMarkdown, isRepositoryKey, isTextFile, normalizePath, rawUrl, renderCode, renderMarkdown, repositories } from '../../../lib/repositories';
+
+export const prerender = false;
+
+const key = Astro.params.repo || '';
+const repo = isRepositoryKey(key) ? key : null;
+const requested = Astro.params.path || 'README.md';
+const path = normalizePath(requested);
+const valid = repo && path;
+if (!valid) Astro.response.status = 404;
+else Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
+
+let rendered = '';
+let error = '';
+let kind: 'markdown' | 'code' | 'image' | 'directory' | 'submodule' | 'other' = 'other';
+let children: { path: string; type: string }[] = [];
+if (valid) {
+  try {
+    if (repo === 'dotfiles' && path === 'home/.config/nvim') kind = 'submodule';
+    else if (isImage(path)) kind = 'image';
+    else if (isTextFile(path)) {
+      const source = await getFile(repo, path);
+      kind = isMarkdown(path) ? 'markdown' : 'code';
+      rendered = kind === 'markdown' ? await renderMarkdown(repo, path, source) : await renderCode(path, source);
+    } else {
+      const tree = await getTree(repo);
+      if (tree.some((entry) => entry.path === path && entry.type === 'tree')) {
+        kind = 'directory';
+        children = tree.filter((entry) => entry.path.startsWith(`${path}/`) && !entry.path.slice(path.length + 1).includes('/')).sort((a, b) => (a.type === 'tree' ? 0 : 1) - (b.type === 'tree' ? 0 : 1) || a.path.localeCompare(b.path));
+      }
+    }
+  } catch {
+    error = 'The preview is temporarily unavailable. You can open the file on GitHub.';
+    Astro.response.headers.set('Cache-Control', 'no-store');
+  }
+}
+
+const meta = {
+  path: valid ? `/explore/${repo}${Astro.params.path ? `/${path}` : ''}` : Astro.url.pathname,
+  title: valid ? `${path} · ${repositories[repo].label} — kevinmuka` : 'Repository not found — kevinmuka',
+  description: valid ? `Explore ${path} in Kevin Muka's ${repositories[repo].label} repository.` : 'Repository not found.',
+  lang: 'en',
+};
+---
+<SiteLayout page={meta}>
+  <main transition:name="page-content">
+    {valid ? <>
+      <div class="wrap explorer-intro">
+        <p class="eyebrow">Explore the source / {repositories[repo].label}</p>
+        <h1>Inside <strong>{repositories[repo].label}.</strong></h1>
+        <p class="lead">{repositories[repo].description} Browse the current public files here, or open the original on GitHub.</p>
+      </div>
+      <div class="wrap explorer-layout">
+        <RepositoryExplorer client:load transition:persist="repo-explorer" repo={repo} selectedPath={path} />
+        <article class="explorer-content panel">
+          <div class="explorer-filebar"><div><span class="eyebrow">{repositories[repo].label} / main</span><h2>{path}</h2></div><a class="text-link" href={kind === 'submodule' ? githubUrl('nvim') : githubUrl(repo, path, kind === 'directory')} target="_blank" rel="noopener noreferrer">View on GitHub</a></div>
+          {error ? <p class="explorer-message">{error}</p>
+            : kind === 'image' ? <div class="explorer-image"><img src={rawUrl(repo, path)} alt={`Preview of ${path}`} /></div>
+            : kind === 'submodule' ? <div class="explorer-message"><p>This path points to the separate nvim repository.</p><a class="button primary" href="/explore/nvim">Explore nvim</a></div>
+            : kind === 'directory' ? <div class="explorer-directory"><p>Files and folders in this directory:</p><ul>{children.map((child) => <li><a href={`/explore/${repo}/${child.path.split('/').map(encodeURIComponent).join('/')}`}>{child.type === 'tree' ? '▸' : '▤'} &nbsp; {child.path.slice(path.length + 1)}</a></li>)}</ul></div>
+            : kind === 'other' ? <p class="explorer-message">This file type does not have an in-page preview. <a href={githubUrl(repo, path)}>Open it on GitHub ↗</a></p>
+            : <div class={kind === 'markdown' ? 'repository-markdown' : 'repository-code'} set:html={rendered} />}
+        </article>
+      </div>
+    </> : <div class="wrap page-hero"><p class="eyebrow">404</p><h1>Repository not found.</h1><a class="button" href="/explore/dotfiles">Explore dotfiles</a></div>}
+  </main>
+</SiteLayout>
