@@ -1,9 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
   <title id="title">Symlinks</title>
   <desc id="desc">Two interlocking links.</desc>
+  <defs>
+    <clipPath id="front-crossing">
+      <rect x="80" y="135" width="45" height="50"/>
+    </clipPath>
+  </defs>
   <rect width="256" height="256" rx="56" fill="#3159d5"/>
-  <g transform="translate(32 32) scale(8)" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="#a9c0ff"/>
-    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="#ffffff"/>
-  </g>
+  <rect id="back-link" x="47" y="82" width="113" height="73" rx="36" transform="rotate(-38 103.5 118.5)" fill="none" stroke="#a9c0ff" stroke-width="20"/>
+  <rect x="96" y="104" width="113" height="73" rx="36" transform="rotate(-38 152.5 140.5)" fill="none" stroke="#ffffff" stroke-width="20"/>
+  <use href="#back-link" clip-path="url(#front-crossing)"/>
 </svg>

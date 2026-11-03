@@ -1,4 +1,5 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+const mobileHeader = matchMedia('(max-width: 620px)');
 let codeObserver: IntersectionObserver | undefined;
 let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: boolean } | null = null;
 let guideScroll: { x: number; y: number; headingId?: string; headingTop?: number } | null = null;
@@ -25,7 +26,7 @@ function closeNavigationMenu(event: MouseEvent) {
 }
 
 function updateHeader() {
-  document.querySelector('.site-header')?.classList.toggle('is-compact', scrollY > 48);
+  document.querySelector('.site-header')?.classList.toggle('is-compact', !mobileHeader.matches && scrollY > 48);
 }
 
 function updateThemeButton() {
@@ -124,7 +125,11 @@ document.addEventListener('astro:before-swap', (event) => {
   const nextGuideIntro = nextGuide?.querySelector<HTMLElement>('.doc-intro');
   const currentGuideLayout = currentGuide?.querySelector<HTMLElement>('.document-layout');
   const nextGuideLayout = nextGuide?.querySelector<HTMLElement>('.document-layout');
-  if (currentGuideIntro && nextGuideIntro && currentGuideLayout && nextGuideLayout) {
+  const currentLanguageSwitch = currentGuideIntro?.querySelector<HTMLElement>('.language-switch');
+  const nextLanguageSwitch = nextGuideIntro?.querySelector<HTMLElement>('.language-switch');
+  const currentIntroContent = [...currentGuideIntro?.children ?? []].filter((child) => child !== currentLanguageSwitch);
+  const nextIntroContent = [...nextGuideIntro?.children ?? []].filter((child) => child !== nextLanguageSwitch);
+  if (currentGuideIntro && nextGuideIntro && currentGuideLayout && nextGuideLayout && currentLanguageSwitch && nextLanguageSwitch && currentIntroContent.length === nextIntroContent.length) {
     const heading = [...currentGuideLayout.querySelectorAll<HTMLElement>('.doc-content :is(h1,h2,h3,h4,h5,h6)[id]')]
       .filter((item) => item.getBoundingClientRect().top <= 120).at(-1);
     guideScroll = event.navigationType === 'traverse' ? null : {
@@ -136,9 +141,17 @@ document.addEventListener('astro:before-swap', (event) => {
     document.documentElement.dataset.routeMotion = 'none';
     event.swap = () => {
       updatePageMetadata(event.newDocument);
-      nextGuideIntro.classList.add('guide-enter');
+      currentIntroContent.forEach((oldChild, index) => {
+        const newChild = nextIntroContent[index];
+        newChild.classList.add('guide-enter');
+        oldChild.replaceWith(newChild);
+      });
+      currentLanguageSwitch.setAttribute('aria-label', nextLanguageSwitch.getAttribute('aria-label') || 'Guide language');
+      for (const link of currentLanguageSwitch.querySelectorAll<HTMLAnchorElement>('a[lang]')) {
+        if (link.lang === event.newDocument.documentElement.lang) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      }
       nextGuideLayout.classList.add('guide-enter');
-      currentGuideIntro.replaceWith(nextGuideIntro);
       currentGuideLayout.replaceWith(nextGuideLayout);
     };
     return;
@@ -201,6 +214,7 @@ document.addEventListener('astro:after-swap', () => {
 });
 
 window.addEventListener('scroll', updateHeader, { passive: true });
+mobileHeader.addEventListener('change', updateHeader);
 
 document.addEventListener('click', (event) => {
   closeNavigationMenu(event);

@@ -181,10 +181,8 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
   .wrap { width: min(100% - 32px, 1180px); }
   html { scroll-padding-top: 140px; }
   .header-inner { align-items: flex-start; flex-direction: column; gap: 8px; padding-block: 15px; }
-  .site-header.is-compact .header-inner { gap: 4px; padding-block: 8px; }
   .top-nav { justify-content: flex-start; gap: 3px; margin-left: -10px; }
   .top-nav > a, .nav-menu summary { min-height: 34px; padding: 6px 10px; font-size: 12px; }
-  .site-header.is-compact .top-nav > a, .site-header.is-compact .nav-menu summary { min-height: 32px; }
   .top-nav .nav-github { margin-left: 0; }
   .nav-menu-panel { left: 0; right: auto; }
   .cards, .flow, .split { grid-template-columns: 1fr; }
@@ -200,17 +198,12 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button, .card, .site-header, .header-inner, .brand, .brand-mark, .top-nav a, .button.link-journey::before, .link-journey .journey-arrow { transition: none; } }
 
 /* Language selector for translated guides. */
-.language-switch { position: relative; display: inline-grid; grid-template-columns: repeat(2, 78px); gap: 4px; isolation: isolate; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #edf2f9; }
-.language-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: 78px; border-radius: 999px; background: #fff; box-shadow: 0 1px 6px rgb(20 36 64 / 10%); transform: translateX(0); transition: transform .24s cubic-bezier(.22, 1, .36, 1); view-transition-name: guide-language-pill; }
+.language-switch { position: relative; display: inline-grid; grid-template-columns: repeat(2, 78px); gap: 4px; isolation: isolate; overflow: hidden; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #edf2f9; }
+.language-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: 78px; border-radius: 999px; background: #fff; box-shadow: 0 1px 6px rgb(20 36 64 / 10%); transform: translateX(0); transition: transform .24s cubic-bezier(.22, 1, .36, 1); }
 .language-switch:has(a[lang="it"][aria-current="page"]) .language-pill { transform: translateX(82px); }
 .language-switch a { position: relative; z-index: 1; display: grid; place-items: center; padding: 7px 6px; border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; }
-.language-switch a[lang="en"] { view-transition-name: guide-language-en; }
-.language-switch a[lang="it"] { view-transition-name: guide-language-it; }
 .language-switch a:hover { color: var(--accent); }
 .language-switch a[aria-current="page"] { color: var(--text); }
-::view-transition-group(guide-language-pill), ::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { animation-duration: .24s; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
-::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { z-index: 1; }
-::view-transition-old(guide-language-pill), ::view-transition-new(guide-language-pill), ::view-transition-old(guide-language-en), ::view-transition-new(guide-language-en), ::view-transition-old(guide-language-it), ::view-transition-new(guide-language-it) { animation: none; }
 
 /* Shared navigation, theme switch, and page motion. */
 .header-actions { display: flex; align-items: center; gap: 12px; }
@@ -276,6 +269,7 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 :root[data-theme="dark"] .terminal { box-shadow: 0 24px 65px #03081399, inset 0 1px #ffffff18; }
 
 @media (max-width: 620px) {
+  .site-header, :root[data-theme="dark"] .site-header { background: var(--bg); backdrop-filter: none; }
   .header-actions { width: 100%; align-items: flex-start; justify-content: space-between; gap: 4px; }
   .top-nav { flex: 1; }
   .theme-toggle { flex-basis: 32px; width: 32px; height: 32px; font-size: 17px; }
@@ -383,6 +377,6 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 }
 @media (prefers-reduced-motion: reduce) {
   .tree-chevron, .explorer-preview-files a { transition: none; }
-  .explorer-enter, .guide-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after, ::view-transition-group(guide-language-pill), ::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { animation: none; }
+  .explorer-enter, .guide-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after { animation: none; }
   .language-pill { transition: none; }
 }
