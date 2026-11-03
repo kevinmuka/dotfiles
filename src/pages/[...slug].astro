@@ -9,5 +9,5 @@ export function getStaticPaths() {
 const { page } = Astro.props;
 ---
 <SiteLayout page={page}>
-  <main transition:name="page-content"><Fragment set:html={page.content} /></main>
+  <main transition:name="page-content" data-guide={/^\/(macbackup|nvim)\/docs(?:\/it)?$/.test(page.path) ? 'true' : undefined}><Fragment set:html={page.content} /></main>
 </SiteLayout>

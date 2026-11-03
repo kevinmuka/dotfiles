@@ -29,6 +29,7 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={page.description} />
+    <meta name="theme-color" content="#f6f8fc" />
     <title>{page.title}</title>
     <link rel="canonical" href={canonical} />
     {page.alternates?.map((alternate) => <link rel="alternate" hreflang={alternate.lang} href={alternate.href} />)}
@@ -53,17 +54,16 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
     <link rel="icon" href="/favicon.ico" sizes="any" type="image/x-icon" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <script is:inline>
-      try {
-        const saved = localStorage.getItem('dotfiles-theme');
-        document.documentElement.classList.add('js-motion');
-        document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
-          ? saved
-          : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      } catch {
-        document.documentElement.classList.add('js-motion');
-        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      }
+      let saved = null;
+      try { saved = localStorage.getItem('dotfiles-theme'); } catch { /* Storage may be unavailable. */ }
+      const theme = saved === 'light' || saved === 'dark'
+        ? saved
+        : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.classList.add('js-motion');
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0e1725' : '#f6f8fc');
     </script>
     <ClientRouter fallback="swap" />
   </head>

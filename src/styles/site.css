@@ -162,6 +162,8 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
 .doc-content blockquote { border-left: 3px solid var(--blue); margin: 20px 0; padding: 3px 0 3px 20px; }
 .doc-content img { max-width: 100%; }
 .doc-intro { padding: 62px 0 38px; }
+.guide-enter { animation: guide-arrive .16s ease-out both; }
+@keyframes guide-arrive { from { opacity: .78; } to { opacity: 1; } }
 .doc-intro h1 { font-size: clamp(2.5rem, 4vw, 4.25rem); margin: 11px 0 14px; }
 .doc-intro p { color: var(--muted); max-width: 780px; }
 .legal { max-width: 790px; }
@@ -374,5 +376,5 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 }
 @media (prefers-reduced-motion: reduce) {
   .tree-chevron, .explorer-preview-files a { transition: none; }
-  .explorer-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after { animation: none; }
+  .explorer-enter, .guide-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after { animation: none; }
 }

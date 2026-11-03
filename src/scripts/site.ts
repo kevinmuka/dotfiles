@@ -1,6 +1,7 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 let codeObserver: IntersectionObserver | undefined;
 let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: boolean } | null = null;
+let guideScroll: { x: number; y: number; headingId?: string; headingTop?: number } | null = null;
 let explorerLoadingTimer: number | undefined;
 let explorerLoadingGeneration = 0;
 
@@ -37,6 +38,12 @@ function updateThemeButton() {
   if (icon) icon.textContent = dark ? '☀' : '☾';
 }
 
+function updateThemeColor() {
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute(
+    'content', document.documentElement.dataset.theme === 'dark' ? '#0e1725' : '#f6f8fc',
+  );
+}
+
 function setupCodePreviews() {
   codeObserver?.disconnect();
   if (motionPreference.matches || !('IntersectionObserver' in window)) {
@@ -67,9 +74,20 @@ function isGuideLanguageSwitch(from: URL, to: URL) {
     && normalize(from.pathname) === normalize(to.pathname);
 }
 
+function updatePageMetadata(nextDocument: Document) {
+  document.title = nextDocument.title;
+  document.documentElement.lang = nextDocument.documentElement.lang;
+  for (const selector of ['link[rel="canonical"]', 'meta[name="description"]', 'meta[property="og:url"]', 'meta[property="og:title"]', 'meta[property="og:description"]']) {
+    const oldTag = document.head.querySelector(selector);
+    const newTag = nextDocument.head.querySelector(selector);
+    if (oldTag && newTag) oldTag.replaceWith(newTag);
+  }
+}
+
 document.addEventListener('astro:page-load', () => {
   updateHeader();
   updateThemeButton();
+  updateThemeColor();
   updateExternalLinks();
   setupCodePreviews();
 });
@@ -95,8 +113,36 @@ document.addEventListener('astro:before-preparation', (event) => {
 document.addEventListener('astro:before-swap', (event) => {
   stopExplorerLoading();
   event.newDocument.documentElement.dataset.theme = document.documentElement.dataset.theme;
+  event.newDocument.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.dataset.theme === 'dark' ? '#0e1725' : '#f6f8fc');
   event.newDocument.documentElement.classList.add('js-motion');
-  event.newDocument.documentElement.dataset.routeMotion = isGuideLanguageSwitch(event.from, event.to) ? 'none' : 'fade';
+  const guideSwitch = isGuideLanguageSwitch(event.from, event.to);
+  event.newDocument.documentElement.dataset.routeMotion = guideSwitch ? 'none' : 'fade';
+
+  const currentGuide = guideSwitch ? document.querySelector<HTMLElement>('main[data-guide]') : null;
+  const nextGuide = guideSwitch ? event.newDocument.querySelector<HTMLElement>('main[data-guide]') : null;
+  const currentGuideIntro = currentGuide?.querySelector<HTMLElement>('.doc-intro');
+  const nextGuideIntro = nextGuide?.querySelector<HTMLElement>('.doc-intro');
+  const currentGuideLayout = currentGuide?.querySelector<HTMLElement>('.document-layout');
+  const nextGuideLayout = nextGuide?.querySelector<HTMLElement>('.document-layout');
+  if (currentGuideIntro && nextGuideIntro && currentGuideLayout && nextGuideLayout) {
+    const heading = [...currentGuideLayout.querySelectorAll<HTMLElement>('.doc-content :is(h1,h2,h3,h4,h5,h6)[id]')]
+      .filter((item) => item.getBoundingClientRect().top <= 120).at(-1);
+    guideScroll = event.navigationType === 'traverse' ? null : {
+      x: scrollX,
+      y: scrollY,
+      headingId: heading?.id,
+      headingTop: heading?.getBoundingClientRect().top,
+    };
+    document.documentElement.dataset.routeMotion = 'none';
+    event.swap = () => {
+      updatePageMetadata(event.newDocument);
+      nextGuideIntro.classList.add('guide-enter');
+      nextGuideLayout.classList.add('guide-enter');
+      currentGuideIntro.replaceWith(nextGuideIntro);
+      currentGuideLayout.replaceWith(nextGuideLayout);
+    };
+    return;
+  }
 
   const current = document.querySelector<HTMLElement>('main[data-explorer]');
   const next = event.newDocument.querySelector<HTMLElement>('main[data-explorer]');
@@ -117,12 +163,7 @@ document.addEventListener('astro:before-swap', (event) => {
   };
   document.documentElement.dataset.routeMotion = 'none';
   event.swap = () => {
-    document.title = event.newDocument.title;
-    for (const selector of ['link[rel="canonical"]', 'meta[name="description"]', 'meta[property="og:url"]', 'meta[property="og:title"]', 'meta[property="og:description"]']) {
-      const oldTag = document.head.querySelector(selector);
-      const newTag = event.newDocument.head.querySelector(selector);
-      if (oldTag && newTag) oldTag.replaceWith(newTag);
-    }
+    updatePageMetadata(event.newDocument);
     if (current.dataset.repo !== next.dataset.repo) {
       const oldIsland = currentSidebar.closest('astro-island');
       const newIsland = nextSidebar.closest('astro-island');
@@ -140,6 +181,14 @@ document.addEventListener('astro:before-swap', (event) => {
 });
 
 document.addEventListener('astro:after-swap', () => {
+  if (guideScroll) {
+    const heading = guideScroll.headingId ? document.getElementById(guideScroll.headingId) : null;
+    const top = heading && guideScroll.headingTop !== undefined
+      ? scrollY + heading.getBoundingClientRect().top - guideScroll.headingTop
+      : guideScroll.y;
+    scrollTo({ left: guideScroll.x, top, behavior: 'instant' });
+  }
+  guideScroll = null;
   if (explorerScroll) {
     const headerHeight = document.querySelector<HTMLElement>('.site-header')?.offsetHeight ?? 60;
     const mobileTarget = document.querySelector<HTMLElement>(explorerScroll.repoChanged ? '.explorer-sidebar' : '.explorer-content');
@@ -164,6 +213,7 @@ document.addEventListener('click', (event) => {
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem('dotfiles-theme', next); } catch { /* Storage may be unavailable. */ }
     updateThemeButton();
+    updateThemeColor();
   };
   document.documentElement.classList.add('theme-switching');
   apply();
