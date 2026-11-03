@@ -74,7 +74,7 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
         <div class="header-actions">
           <nav aria-label="Main navigation" class="top-nav">
             <details class="nav-menu">
-              <summary class:list={{ 'is-current': inConfiguration }}>Configurations <span aria-hidden="true">⌄</span></summary>
+              <summary class:list={{ 'is-current': inConfiguration }}>Configurations</summary>
               <div class="nav-menu-panel">
                 {configurationNav.map((item) => <a href={item.href} aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
               </div>

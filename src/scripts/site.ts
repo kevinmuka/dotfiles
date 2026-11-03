@@ -1,6 +1,14 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 let codeObserver: IntersectionObserver | undefined;
 let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: boolean } | null = null;
+let explorerLoadingTimer: number | undefined;
+let explorerLoadingGeneration = 0;
+
+function stopExplorerLoading() {
+  explorerLoadingGeneration++;
+  clearTimeout(explorerLoadingTimer);
+  document.querySelector<HTMLElement>('.explorer-content.is-loading')?.classList.remove('is-loading');
+}
 
 function updateExternalLinks() {
   document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
@@ -66,7 +74,26 @@ document.addEventListener('astro:page-load', () => {
   setupCodePreviews();
 });
 
+document.addEventListener('astro:before-preparation', (event) => {
+  stopExplorerLoading();
+  const current = document.querySelector<HTMLElement>('main[data-explorer]');
+  const destinationRepo = /^\/explore\/(dotfiles|nvim)(?:\/|$)/.exec(event.to.pathname)?.[1];
+  if (!current || !destinationRepo) return;
+  const generation = explorerLoadingGeneration;
+  explorerLoadingTimer = window.setTimeout(() => {
+    if (generation !== explorerLoadingGeneration) return;
+    const article = current.querySelector<HTMLElement>('.explorer-content');
+    const label = article?.querySelector<HTMLElement>('[data-explorer-loading-text]');
+    if (label) label.textContent = current.dataset.repo === destinationRepo ? 'Opening file…' : 'Switching repository…';
+    article?.classList.add('is-loading');
+  }, 180);
+  event.signal.addEventListener('abort', () => {
+    if (generation === explorerLoadingGeneration) stopExplorerLoading();
+  }, { once: true });
+});
+
 document.addEventListener('astro:before-swap', (event) => {
+  stopExplorerLoading();
   event.newDocument.documentElement.dataset.theme = document.documentElement.dataset.theme;
   event.newDocument.documentElement.classList.add('js-motion');
   event.newDocument.documentElement.dataset.routeMotion = isGuideLanguageSwitch(event.from, event.to) ? 'none' : 'fade';
@@ -99,9 +126,14 @@ document.addEventListener('astro:before-swap', (event) => {
     if (current.dataset.repo !== next.dataset.repo) {
       const oldIsland = currentSidebar.closest('astro-island');
       const newIsland = nextSidebar.closest('astro-island');
-      if (oldIsland && newIsland) oldIsland.replaceWith(newIsland);
+      if (oldIsland && newIsland) {
+        newIsland.classList.add('explorer-enter');
+        oldIsland.replaceWith(newIsland);
+      }
+      nextIntro.classList.add('explorer-enter');
       currentIntro.replaceWith(nextIntro);
     }
+    nextArticle.classList.add('explorer-enter');
     currentArticle.replaceWith(nextArticle);
     current.dataset.repo = next.dataset.repo;
   };

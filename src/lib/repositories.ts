@@ -54,19 +54,27 @@ export async function getTree(key: RepositoryKey): Promise<TreeEntry[]> {
 export function isImage(path: string) { return /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(path); }
 export function isMarkdown(path: string) { return /\.(md|markdown)$/i.test(path); }
 export function isTextFile(path: string) {
-  return /(^|\/)(README|LICENSE|Makefile|Dockerfile|\.gitignore|\.gitmodules|\.zshrc|\.zprofile|\.zshenv)$|\.(md|markdown|txt|sh|zsh|bash|lua|json|jsonc|ya?ml|toml|ini|conf|config|env|css|scss|html|xml|svg|js|jsx|ts|tsx|py|rs|go|c|h|cpp|hpp|java|gradle|properties|sql|vim|vimrc|gitignore)$/i.test(path);
+  return /(^|\/)(README|LICENSE|Makefile|Dockerfile|\.gitignore|\.gitmodules|\.ideavimrc|\.zshrc|\.zprofile|\.zshenv)$|\.(md|markdown|txt|sh|zsh|bash|lua|json|jsonc|ya?ml|toml|ini|conf|config|env|css|scss|html|xml|svg|js|jsx|ts|tsx|py|rs|go|c|h|cpp|hpp|java|gradle|properties|sql|vim|vimrc|gitignore)$/i.test(path);
 }
+
+export class NonTextFileError extends Error {}
 
 export async function getFile(key: RepositoryKey, path: string): Promise<string> {
   const valid = normalizePath(path);
-  if (!valid || !isTextFile(valid)) throw new Error('Preview unavailable for this file');
+  if (!valid) throw new Error('Preview unavailable for this file');
   const response = await fetch(rawUrl(key, valid));
   if (!response.ok) throw new Error(`GitHub file request failed (${response.status})`);
   const length = Number(response.headers.get('content-length') || 0);
-  if (length > 300_000) throw new Error('This file is too large to preview');
-  const content = await response.text();
-  if (content.length > 300_000) throw new Error('This file is too large to preview');
-  return content;
+  if (length > 300_000) throw new NonTextFileError('This file is too large to preview');
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > 300_000 || bytes.some((byte) => byte === 0 || byte < 9 || (byte > 13 && byte < 32))) {
+    throw new NonTextFileError('This file is not a small text file');
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new NonTextFileError('This file is not UTF-8 text');
+  }
 }
 
 function resolveReadmeLink(key: RepositoryKey, currentPath: string, href: string, image: boolean) {
