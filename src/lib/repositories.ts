@@ -1,6 +1,7 @@
 import { posix } from 'node:path';
 import { Marked } from 'marked';
-import sanitizeHtml from 'sanitize-html';
+import { rehype } from 'rehype';
+import rehypeSanitize from 'rehype-sanitize';
 import { codeToHtml } from 'shiki';
 import { repositories } from '../data/repositories';
 import type { RepositoryKey } from '../data/repositories';
@@ -91,22 +92,7 @@ export async function renderMarkdown(key: RepositoryKey, path: string, source: s
     },
   });
   const rendered = await parser.parse(source);
-  const clean = sanitizeHtml(rendered, {
-    allowedTags: [...sanitizeHtml.defaults.allowedTags, 'img', 'input'],
-    allowedAttributes: {
-      ...sanitizeHtml.defaults.allowedAttributes,
-      a: ['href', 'title', 'target', 'rel'],
-      img: ['src', 'alt', 'title', 'width', 'height'],
-      input: ['type', 'checked', 'disabled'],
-      code: ['class'],
-    },
-    transformTags: {
-      a: (tagName, attributes) => {
-        const external = /^https?:\/\//i.test(attributes.href || '');
-        return { tagName, attribs: { ...attributes, ...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {}) } };
-      },
-    },
-  });
+  const clean = String(await rehype().use(rehypeSanitize).process(rendered));
   return clean.replace(/<h([1-6])>(.*?)<\/h\1>/g, (_match, level: string, body: string) => {
     const slug = body.replace(/<[^>]+>/g, '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-');
     return `<h${level} id="${slug}">${body}</h${level}>`;

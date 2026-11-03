@@ -39,6 +39,10 @@ document.addEventListener('astro:page-load', () => {
   setupReveals();
 });
 
+document.addEventListener('astro:before-swap', (event) => {
+  event.newDocument.documentElement.dataset.theme = document.documentElement.dataset.theme;
+});
+
 window.addEventListener('scroll', updateHeader, { passive: true });
 
 document.addEventListener('click', (event) => {
