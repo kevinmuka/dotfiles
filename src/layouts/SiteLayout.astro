@@ -24,7 +24,7 @@ const nav = [
 ];
 ---
 <!doctype html>
-<html lang={page.lang}>
+<html lang={page.lang} transition:name="root" transition:animate="none">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -56,14 +56,16 @@ const nav = [
     <script is:inline>
       try {
         const saved = localStorage.getItem('dotfiles-theme');
+        document.documentElement.classList.add('js-motion');
         document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
           ? saved
           : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       } catch {
+        document.documentElement.classList.add('js-motion');
         document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       }
     </script>
-    <ClientRouter />
+    <ClientRouter fallback="swap" />
   </head>
   <body>
     <header class="site-header" transition:name="site-header">

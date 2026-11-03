@@ -97,6 +97,9 @@ p { margin: 0 0 16px; }
 .code-window { border: 1px solid var(--line); border-radius: 14px; background: #111d31; overflow: hidden; }
 .code-window .label { padding: 11px 18px; border-bottom: 1px solid var(--line); color: #b4c1d3; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .code-window pre { margin: 0; padding: 20px; color: #e2ebf7; font-size: 13px; line-height: 1.8; }
+html.js-motion .code-window pre { clip-path: inset(0 0 100% 0); }
+html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--code-duration, 1s) steps(var(--code-lines, 8), end) both; }
+@keyframes code-unfold { to { clip-path: inset(0); } }
 .page-hero { padding-block: 85px 68px; max-width: 910px; }
 .product-title { display: flex; align-items: center; gap: 24px; margin: 18px 0 24px; }
 .product-title h1 { margin: 0; }
@@ -189,13 +192,16 @@ p { margin: 0 0 16px; }
 .theme-toggle:hover { transform: translateY(-1px); border-color: var(--accent); }
 .theme-toggle:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
-@keyframes page-leave { to { opacity: 0; transform: translateY(-12px) scale(.992); } }
-@keyframes page-enter { from { opacity: 0; transform: translateY(18px) scale(.987); } }
-::view-transition-old(page-content) { animation: 220ms ease-in both page-leave; }
-::view-transition-new(page-content) { animation: 420ms cubic-bezier(.22, 1, .36, 1) both page-enter; }
-::view-transition-old(site-header), ::view-transition-new(site-header) { animation-duration: 180ms; }
-.reveal-ready { opacity: 0; transform: translateY(20px); transition: opacity .65s ease var(--reveal-delay, 0ms), transform .65s cubic-bezier(.22, 1, .36, 1) var(--reveal-delay, 0ms); }
-.reveal-ready.is-visible { opacity: 1; transform: translateY(0); }
+@keyframes page-fade-out { to { opacity: 0; } }
+@keyframes page-fade-in { from { opacity: 0; } to { opacity: 1; } }
+::view-transition-group(page-content) { animation: none; }
+::view-transition-old(page-content) { animation: 100ms ease-in both page-fade-out; }
+::view-transition-new(page-content) { animation: 180ms ease-out 100ms both page-fade-in; }
+::view-transition-old(site-header) { animation: none; opacity: 0; }
+::view-transition-new(site-header) { animation: none; opacity: 1; }
+html[data-route-motion="none"]::view-transition-old(page-content) { animation: none; opacity: 0; }
+html[data-route-motion="none"]::view-transition-new(page-content) { animation: none; opacity: 1; }
+html.theme-switching *, html.theme-switching *::before, html.theme-switching *::after { transition: none !important; }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -251,10 +257,10 @@ p { margin: 0 0 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hero .terminal pre { animation: none; }
-  .reveal-ready { opacity: 1; transform: none; transition: none; }
+  html.js-motion .code-window pre { clip-path: none; animation: none; }
   .theme-toggle { transition: none; }
-  ::view-transition-old(page-content), ::view-transition-new(page-content),
-  ::view-transition-old(site-header), ::view-transition-new(site-header) { animation: none; }
+  ::view-transition-old(page-content), ::view-transition-old(site-header) { animation: none; opacity: 0; }
+  ::view-transition-new(page-content), ::view-transition-new(site-header) { animation: none; opacity: 1; }
 }
 
 /* The repository explorer uses the existing cards, panels, and color system. */
