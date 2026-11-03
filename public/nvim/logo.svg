@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neovim</title>
+  <desc id="desc">An editor window with code brackets and a cursor.</desc>
+  <rect width="256" height="256" rx="56" fill="#3159d5"/>
+  <rect x="49" y="54" width="158" height="150" rx="20" fill="#a9c0ff"/>
+  <rect x="63" y="68" width="130" height="136" rx="16" fill="#ffffff"/>
+  <path d="M63 99h130" stroke="#a9c0ff" stroke-width="8"/>
+  <path d="m100 125-18 17 18 17m36-34 18 17-18 17" fill="none" stroke="#3159d5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M113 173h30" fill="none" stroke="#3159d5" stroke-width="9" stroke-linecap="round"/>
+</svg>

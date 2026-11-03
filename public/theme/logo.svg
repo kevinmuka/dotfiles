@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Theme</title>
+  <desc id="desc">A circle divided into light and dark halves.</desc>
+  <rect width="256" height="256" rx="56" fill="#3159d5"/>
+  <circle cx="128" cy="128" r="72" fill="#a9c0ff"/>
+  <path d="M128 56a72 72 0 0 0 0 144Z" fill="#ffffff"/>
+  <path d="M128 56v144" fill="none" stroke="#3159d5" stroke-width="9" stroke-linecap="round"/>
+</svg>

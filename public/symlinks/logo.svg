@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Symlinks</title>
+  <desc id="desc">Two interlocking links.</desc>
+  <rect width="256" height="256" rx="56" fill="#3159d5"/>
+  <rect x="47" y="82" width="113" height="73" rx="36" transform="rotate(-38 103.5 118.5)" fill="none" stroke="#a9c0ff" stroke-width="20"/>
+  <rect x="96" y="104" width="113" height="73" rx="36" transform="rotate(-38 152.5 140.5)" fill="none" stroke="#ffffff" stroke-width="20"/>
+  <path d="m106 145 44-34" fill="none" stroke="#3159d5" stroke-width="12" stroke-linecap="round"/>
+</svg>
