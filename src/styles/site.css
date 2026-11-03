@@ -162,8 +162,8 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
 .doc-content blockquote { border-left: 3px solid var(--blue); margin: 20px 0; padding: 3px 0 3px 20px; }
 .doc-content img { max-width: 100%; }
 .doc-intro { padding: 62px 0 38px; }
-.guide-enter { animation: guide-arrive .16s ease-out both; }
-@keyframes guide-arrive { from { opacity: .78; } to { opacity: 1; } }
+.guide-enter { animation: guide-arrive .22s ease-out both; }
+@keyframes guide-arrive { from { opacity: .7; } to { opacity: 1; } }
 .doc-intro h1 { font-size: clamp(2.5rem, 4vw, 4.25rem); margin: 11px 0 14px; }
 .doc-intro p { color: var(--muted); max-width: 780px; }
 .legal { max-width: 790px; }
@@ -200,10 +200,17 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button, .card, .site-header, .header-inner, .brand, .brand-mark, .top-nav a, .button.link-journey::before, .link-journey .journey-arrow { transition: none; } }
 
 /* Language selector for translated guides. */
-.language-switch { display: inline-flex; gap: 4px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #edf2f9; }
-.language-switch a { padding: 7px 14px; border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; }
+.language-switch { position: relative; display: inline-grid; grid-template-columns: repeat(2, 78px); gap: 4px; isolation: isolate; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #edf2f9; }
+.language-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: 78px; border-radius: 999px; background: #fff; box-shadow: 0 1px 6px rgb(20 36 64 / 10%); transform: translateX(0); transition: transform .24s cubic-bezier(.22, 1, .36, 1); view-transition-name: guide-language-pill; }
+.language-switch:has(a[lang="it"][aria-current="page"]) .language-pill { transform: translateX(82px); }
+.language-switch a { position: relative; z-index: 1; display: grid; place-items: center; padding: 7px 6px; border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; }
+.language-switch a[lang="en"] { view-transition-name: guide-language-en; }
+.language-switch a[lang="it"] { view-transition-name: guide-language-it; }
 .language-switch a:hover { color: var(--accent); }
-.language-switch a[aria-current="page"] { color: var(--text); background: #fff; box-shadow: 0 1px 6px rgb(20 36 64 / 10%); }
+.language-switch a[aria-current="page"] { color: var(--text); }
+::view-transition-group(guide-language-pill), ::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { animation-duration: .24s; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { z-index: 1; }
+::view-transition-old(guide-language-pill), ::view-transition-new(guide-language-pill), ::view-transition-old(guide-language-en), ::view-transition-new(guide-language-en), ::view-transition-old(guide-language-it), ::view-transition-new(guide-language-it) { animation: none; }
 
 /* Shared navigation, theme switch, and page motion. */
 .header-actions { display: flex; align-items: center; gap: 12px; }
@@ -265,7 +272,7 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 :root[data-theme="dark"] .doc-content :not(pre) > code { color: #bfd0ff; background: #293b5d; }
 :root[data-theme="dark"] .doc-content th { background: var(--panel-2); }
 :root[data-theme="dark"] .language-switch { background: var(--panel-2); }
-:root[data-theme="dark"] .language-switch a[aria-current="page"] { background: #354c70; box-shadow: 0 1px 6px #03081388; }
+:root[data-theme="dark"] .language-pill { background: #354c70; box-shadow: 0 1px 6px #03081388; }
 :root[data-theme="dark"] .terminal { box-shadow: 0 24px 65px #03081399, inset 0 1px #ffffff18; }
 
 @media (max-width: 620px) {
@@ -376,5 +383,6 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 }
 @media (prefers-reduced-motion: reduce) {
   .tree-chevron, .explorer-preview-files a { transition: none; }
-  .explorer-enter, .guide-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after { animation: none; }
+  .explorer-enter, .guide-enter, .explorer-spinner, .explorer-content.is-loading .explorer-filebar::after, ::view-transition-group(guide-language-pill), ::view-transition-group(guide-language-en), ::view-transition-group(guide-language-it) { animation: none; }
+  .language-pill { transition: none; }
 }

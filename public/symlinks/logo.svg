@@ -2,7 +2,8 @@
   <title id="title">Symlinks</title>
   <desc id="desc">Two interlocking links.</desc>
   <rect width="256" height="256" rx="56" fill="#3159d5"/>
-  <rect x="47" y="82" width="113" height="73" rx="36" transform="rotate(-38 103.5 118.5)" fill="none" stroke="#a9c0ff" stroke-width="20"/>
-  <rect x="96" y="104" width="113" height="73" rx="36" transform="rotate(-38 152.5 140.5)" fill="none" stroke="#ffffff" stroke-width="20"/>
-  <path d="m106 145 44-34" fill="none" stroke="#3159d5" stroke-width="12" stroke-linecap="round"/>
+  <g transform="translate(32 32) scale(8)" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="#a9c0ff"/>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="#ffffff"/>
+  </g>
 </svg>
