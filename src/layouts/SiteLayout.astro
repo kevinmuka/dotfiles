@@ -69,6 +69,12 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
   </head>
   <body>
     <header class="site-header" transition:name="site-header">
+      <script is:inline>
+        const restoredY = history.state?.scrollY;
+        if ((typeof restoredY === 'number' ? restoredY : scrollY) > 48 && matchMedia('(min-width: 621px)').matches) {
+          document.currentScript?.parentElement?.classList.add('is-compact');
+        }
+      </script>
       <div class="navigation-progress" aria-hidden="true"></div>
       <div class="wrap header-inner">
         <a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>

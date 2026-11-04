@@ -1,5 +1,18 @@
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const mobileHeader = matchMedia('(max-width: 620px)');
+
+// On a full reload, let the browser restore the exact current position before
+// ClientRouter runs. Firefox needs this change before pagehide.
+window.addEventListener('beforeunload', () => {
+  history.scrollRestoration = 'auto';
+  if (history.state && typeof history.state === 'object' && 'index' in history.state) {
+    history.replaceState({ ...history.state, scrollX, scrollY }, '');
+  }
+});
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) history.scrollRestoration = 'manual';
+});
+
 let codeObserver: IntersectionObserver | undefined;
 let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: boolean } | null = null;
 let guideScroll: { x: number; y: number; headingId?: string; headingTop?: number } | null = null;
