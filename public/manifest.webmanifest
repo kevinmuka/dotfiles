@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "kevinmuka / dotfiles",
-  "short_name": "dotfiles",
+  "name": "Dotfiles",
+  "short_name": "Dotfiles",
   "description": "Configuration, documentation and source explorer for Kevin Muka's dotfiles.",
   "lang": "en",
   "start_url": "/",

@@ -183,11 +183,14 @@ html.js-motion .code-window.is-code-playing pre { animation: code-unfold var(--c
   .doc-nav nav ul ul { display: none; }
 }
 @media (max-width: 620px) {
-  .wrap { width: min(100% - 32px, 1180px); }
-  html { scroll-padding-top: 140px; }
-  .header-inner { align-items: flex-start; flex-direction: column; gap: 8px; padding-block: 15px; }
-  .top-nav { justify-content: flex-start; gap: 3px; margin-left: -10px; }
-  .top-nav > a, .nav-menu summary { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+  .wrap { width: min(100% - 24px, 1180px); }
+  html { scroll-padding-top: 82px; }
+  .header-inner { min-height: 60px; flex-direction: row; align-items: center; gap: 8px; padding-block: 8px; }
+  .brand-name { display: none; }
+  .brand-mark { width: 36px; height: 36px; }
+  .top-nav { flex-wrap: nowrap; justify-content: flex-end; gap: 2px; margin-left: 0; }
+  .top-nav > a, .nav-menu summary { min-height: 36px; padding: 6px 7px; font-size: 11px; white-space: nowrap; }
+  .nav-menu summary { gap: 6px; }
   .top-nav .nav-github { margin-left: 0; }
   .nav-menu-panel { left: 0; right: auto; }
   .cards, .flow, .split { grid-template-columns: 1fr; }
@@ -275,9 +278,16 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 
 @media (max-width: 620px) {
   .site-header, :root[data-theme="dark"] .site-header { background: var(--bg); backdrop-filter: none; }
-  .header-actions { width: 100%; align-items: flex-start; justify-content: space-between; gap: 4px; }
-  .top-nav { flex: 1; }
-  .theme-toggle { flex-basis: 32px; width: 32px; height: 32px; font-size: 17px; }
+  .header-actions { min-width: 0; flex: 1; align-items: center; justify-content: flex-end; gap: 5px; }
+  .theme-toggle { flex-basis: 34px; width: 34px; height: 34px; font-size: 17px; }
+}
+@media (max-width: 340px) {
+  .header-inner { gap: 5px; }
+  .brand-mark { width: 32px; height: 32px; font-size: 16px; }
+  .top-nav > a, .nav-menu summary { padding-inline: 5px; font-size: 10px; }
+  .nav-menu summary { gap: 5px; }
+  .nav-github-label { display: none; }
+  .theme-toggle { flex-basis: 32px; width: 32px; height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hero .terminal pre { animation: none; }

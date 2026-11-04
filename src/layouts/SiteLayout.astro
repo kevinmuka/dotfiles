@@ -77,7 +77,7 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
       </script>
       <div class="navigation-progress" aria-hidden="true"></div>
       <div class="wrap header-inner">
-        <a class="brand" href="/"><span class="brand-mark">k.</span><span>kevinmuka <em>/ dotfiles</em></span></a>
+        <a class="brand" href="/" aria-label="Home — kevinmuka dotfiles"><span class="brand-mark" aria-hidden="true">k.</span><span class="brand-name">kevinmuka <em>/ dotfiles</em></span></a>
         <div class="header-actions">
           <nav aria-label="Main navigation" class="top-nav">
             <details class="nav-menu">
@@ -87,7 +87,7 @@ const inConfiguration = configurationNav.some((item) => item.key === section);
               </div>
             </details>
             <a href="/explore/dotfiles" aria-current={section === 'explore' ? 'page' : undefined}>Explore</a>
-            <a class="nav-github" href="https://github.com/kevinmuka/dotfiles" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+            <a class="nav-github" href="https://github.com/kevinmuka/dotfiles" target="_blank" rel="noopener noreferrer" aria-label="GitHub (opens in a new tab)"><span class="nav-github-label">GitHub</span><span aria-hidden="true">↗</span></a>
           </nav>
           <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme" title="Switch color theme"><span aria-hidden="true" data-theme-icon>☾</span></button>
         </div>
