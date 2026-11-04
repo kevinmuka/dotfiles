@@ -5,6 +5,14 @@ let explorerScroll: { x: number; y: number; layoutTop: number; repoChanged: bool
 let guideScroll: { x: number; y: number; headingId?: string; headingTop?: number } | null = null;
 let explorerLoadingTimer: number | undefined;
 let explorerLoadingGeneration = 0;
+let pageLoadingTimer: number | undefined;
+let pageLoadingGeneration = 0;
+
+function stopPageLoading() {
+  pageLoadingGeneration++;
+  clearTimeout(pageLoadingTimer);
+  document.querySelector<HTMLElement>('.site-header.is-page-loading')?.classList.remove('is-page-loading');
+}
 
 function stopExplorerLoading() {
   explorerLoadingGeneration++;
@@ -86,6 +94,7 @@ function updatePageMetadata(nextDocument: Document) {
 }
 
 document.addEventListener('astro:page-load', () => {
+  stopPageLoading();
   updateHeader();
   updateThemeButton();
   updateThemeColor();
@@ -94,6 +103,19 @@ document.addEventListener('astro:page-load', () => {
 });
 
 document.addEventListener('astro:before-preparation', (event) => {
+  stopPageLoading();
+  const internalExplorerNavigation = /^\/explore\/(dotfiles|nvim)(?:\/|$)/.test(event.from.pathname)
+    && /^\/explore\/(dotfiles|nvim)(?:\/|$)/.test(event.to.pathname);
+  if (!internalExplorerNavigation) {
+    const generation = pageLoadingGeneration;
+    pageLoadingTimer = window.setTimeout(() => {
+      if (generation !== pageLoadingGeneration) return;
+      document.querySelector<HTMLElement>('.site-header')?.classList.add('is-page-loading');
+    }, 220);
+    event.signal.addEventListener('abort', () => {
+      if (generation === pageLoadingGeneration) stopPageLoading();
+    }, { once: true });
+  }
   stopExplorerLoading();
   const current = document.querySelector<HTMLElement>('main[data-explorer]');
   const destinationRepo = /^\/explore\/(dotfiles|nvim)(?:\/|$)/.exec(event.to.pathname)?.[1];
@@ -110,6 +132,8 @@ document.addEventListener('astro:before-preparation', (event) => {
     if (generation === explorerLoadingGeneration) stopExplorerLoading();
   }, { once: true });
 });
+
+document.addEventListener('astro:after-preparation', stopPageLoading);
 
 document.addEventListener('astro:before-swap', (event) => {
   stopExplorerLoading();
