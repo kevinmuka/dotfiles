@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import pty
 import re
+import runpy
 import select
 import shlex
 import shutil
@@ -59,6 +60,7 @@ print -r -- '__MACBACKUP_SETUP_DONE__'
         pid, self.fd = pty.fork()
         if pid == 0:
             env = os.environ.copy()
+            env.pop('NO_COLOR', None)
             env.update(HOME=str(home), TERM="xterm-256color", PATH=str(home / "bin") + ":" + env.get("PATH", ""))
             os.execve(ZSH, [ZSH, "-f"], env)
         self.pid = pid
@@ -132,15 +134,55 @@ class MacbackupCompletionTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_subcommands_complete(self):
-        for prefix, command in (("in", "init"), ("ch", "check"), ("ex", "explain"), ("lay", "layout"), ("pr", "preview"), ("ru", "run"), ("st", "status"), ('fo', 'forget'), ('vers', 'versions'), ('veri', 'verify')):
+        for prefix, command in (("in", "init"), ("ch", "check"), ("ex", "explain"), ("lay", "layout"), ("pr", "preview"), ("ru", "run"), ("mou", "mount"), ("st", "status"), ('fo', 'forget'), ('vers', 'versions'), ('veri', 'verify')):
             with self.subTest(command=command):
                 self.assertEqual(self.session.complete("macbackup " + prefix).strip(), "macbackup " + command)
+
+    def test_every_cli_option_has_a_completion_description(self):
+        script = REPO / 'home/.config/scripts/macbackup'
+        parser = runpy.run_path(str(script))['make_parser']()
+        source = COMPLETION.read_text()
+        subparsers = next(action for action in parser._actions
+                          if hasattr(action, 'choices') and isinstance(action.choices, dict)
+                          and 'run' in action.choices)
+        for command, subparser in subparsers.choices.items():
+            match = re.search(r'^      ' + re.escape(command) + r'\)\n(.*?)^        ;;',
+                              source, re.MULTILINE | re.DOTALL)
+            self.assertIsNotNone(match, command)
+            for action in subparser._actions:
+                for option in action.option_strings:
+                    with self.subTest(command=command, option=option):
+                        if option in ('-h', '--help'):
+                            self.assertIn('{-h,--help}', match.group(1))
+                        else:
+                            self.assertTrue(any(option + suffix in match.group(1)
+                                                for suffix in ('[', '=[')))
 
     def test_global_options_complete(self):
         for prefix, option in (("--ver", "--version"), ("--he", "--help")):
             with self.subTest(option=option):
                 self.assertEqual(self.session.complete("macbackup " + prefix).strip(), "macbackup " + option)
         self.assertTrue(self.session.complete("macbackup --conf").strip().startswith("macbackup --config-dir"))
+
+    def test_global_options_are_one_colored_compact_group(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = ZshSession(Path(temp).resolve())
+            try:
+                session.pending = b''
+                os.write(session.fd, b'\x18\x0bmacbackup -\t')
+                output = b''
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    if select.select([session.fd], [], [], 0.2)[0]:
+                        output += os.read(session.fd, 65536)
+                    elif output:
+                        break
+                for option in (b'--config-dir', b'--help', b'--version'):
+                    self.assertEqual(output.count(option), 1, option)
+                self.assertIn(b'\x1b[1;34m', output)
+                self.assertIn(b'\x1b[2m', output)
+            finally:
+                session.close()
 
     def test_subcommand_specific_flags_complete(self):
         for command, prefix, flag in (("check", "--j", "--json"), ("explain", "--j", "--json"), ("layout", "--j", "--json"), ("preview", "--lo", "--local"), ("preview", "--j", "--json"), ("run", "--progress-d", "--progress-depth="), ("init", "--he", "--help")):
@@ -155,6 +197,14 @@ class MacbackupCompletionTests(unittest.TestCase):
                          ['macbackup', 'restore-icon', '--file', str(self.document)])
         partial = str(self.home / 'configuration').replace(' ', '\\ ')
         self.assertEqual(shlex.split(self.session.complete('macbackup restore-icon --folder ' + partial))[-1].rstrip('/'), str(self.config))
+
+    def test_mount_options_and_values_complete(self):
+        self.assertEqual(self.session.complete('macbackup mount --ar').strip(),
+                         'macbackup mount --area=')
+        self.assertEqual(self.session.complete('macbackup mount --area pri').strip(),
+                         'macbackup mount --area private')
+        self.assertEqual(self.session.complete('macbackup mount --target g').strip(),
+                         'macbackup mount --target google')
 
     def test_forget_flags_and_values_complete(self):
         for prefix, option in (('--app', '--apply'), ('--j', '--json'), ('--pl', '--plan')):

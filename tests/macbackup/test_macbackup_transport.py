@@ -88,6 +88,44 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(self.remote_path(self.normal).read_bytes(), self.normal.read_bytes())
         self.assertFalse(self.remote_path(self.secret).exists())
 
+    def test_remote_check_allows_shared_directories_with_distinct_files(self):
+        self.rules(private=True)
+        self.run_backup()
+        result = self.cli('check', '--remote', '--target', 'google', '--json')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(json.loads(result.stdout)['ok'])
+
+    def test_remote_check_rejects_same_file_in_plain_and_private(self):
+        self.run_backup()
+        private = 'localcrypt:current/' + str(self.normal).lstrip('/')
+        subprocess.run(['rclone', 'copyto', str(self.normal), private],
+                       env=self.environment, check=True, capture_output=True)
+        result = self.cli('check', '--remote', '--target', 'google')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(self.normal), result.stderr)
+        self.assertIn('conflitto fra plain e private', result.stderr)
+        self.assertTrue(self.remote_path(self.normal).exists())
+
+    def test_remote_check_rejects_file_at_private_directory_path(self):
+        self.run_backup()
+        private_child = 'localcrypt:current/' + str(self.normal).lstrip('/') + '/child.txt'
+        subprocess.run(['rclone', 'copyto', str(self.secret), private_child],
+                       env=self.environment, check=True, capture_output=True)
+        result = self.cli('check', '--remote', '--target', 'google')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(self.normal), result.stderr)
+
+    def test_local_check_uses_decimal_units_in_human_output(self):
+        with self.normal.open('wb') as stream:
+            stream.truncate(1_234_567_890)
+        result = self.cli('check')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('1.2 GB', result.stdout)
+        result_json = self.cli('check', '--json')
+        self.assertEqual(result_json.returncode, 0, result_json.stdout + result_json.stderr)
+        self.assertGreaterEqual(json.loads(result_json.stdout)['summary']['selected_bytes'],
+                                1_234_567_890)
+
     def test_run_shows_byte_progress_without_corrupting_json_output(self):
         result = self.cli('run', '--target', 'google', '--json')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -143,7 +181,7 @@ except module['TransferInterrupted'] as exc:
         result = self.cli('run', '--target', 'google')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('selezionati 1', result.stdout)
-        self.assertIn('Trasferiti 1 file, 19 byte', result.stdout)
+        self.assertIn('Trasferiti 1 file, 19 B', result.stdout)
 
     def test_active_directory_groups_at_requested_home_depth(self):
         stats = {'transferring': [
@@ -179,7 +217,10 @@ except module['TransferInterrupted'] as exc:
         self.assertIn('1.0 MB / 2.1 MB', decimal)
         self.assertIn('VELOCITÀ  1.0 MB/s', decimal)
         self.assertIn('Spostati sul cloud:', decimal)
-        self.assertIn('Tempo stimato: stima variabile', decimal)
+        self.assertIn('[?] Nascondi legenda', decimal)
+        self.assertIn('Unità attuali: decimale', decimal)
+        self.assertIn('Legenda (solo fase corrente:', decimal)
+        self.assertIn('Tempo stimato: previsione variabile', decimal)
 
     def test_incomplete_remote_copy_is_replaced_on_next_run(self):
         incomplete = self.remote_path(self.normal)
@@ -488,6 +529,36 @@ except module['TransferInterrupted'] as exc:
                 self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                 data = json.loads(checked.stdout)
                 self.assertEqual(data['results'][0]['matched'], 1)
+
+    def test_verify_size_only_reports_its_weaker_method(self):
+        self.rules(private=True)
+        self.run_backup()
+        self.secret.write_text('synthetic private v2')
+        quick = self.cli('verify', '--target', 'google', '--area', 'private',
+                         '--size-only', '--json')
+        self.assertEqual(quick.returncode, 0, quick.stdout + quick.stderr)
+        data = json.loads(quick.stdout)
+        self.assertEqual(data['results'][0]['method'], 'size-only')
+        self.assertEqual(data['results'][0]['matched'], 1)
+        full = self.cli('verify', '--target', 'google', '--area', 'private', '--json')
+        self.assertEqual(full.returncode, 1, full.stdout + full.stderr)
+        self.assertEqual(len(json.loads(full.stdout)['results'][0]['different']), 1)
+
+    def test_verify_size_only_handles_selected_symlink(self):
+        (self.source / 'normal-link').symlink_to('normal.txt')
+        self.run_backup()
+        checked = self.cli('verify', '--target', 'google', '--area', 'plain',
+                           '--size-only', '--json')
+        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+        self.assertEqual(json.loads(checked.stdout)['results'][0]['matched'], 2)
+
+    def test_ctrl_c_at_command_boundary_has_no_traceback(self):
+        with patch.dict(M['main'].__globals__, {'verify_operation': lambda *args: (_ for _ in ()).throw(KeyboardInterrupt)}):
+            with contextlib.redirect_stderr(io.StringIO()) as stderr:
+                result = M['main'](['--config-dir', str(self.config), 'verify', '--target', 'google'])
+        self.assertEqual(result, 130)
+        self.assertIn('Interrotto', stderr.getvalue())
+        self.assertNotIn('Traceback', stderr.getvalue())
 
     def test_deletion_threshold_stops_before_any_transfer(self):
         self.run_backup()

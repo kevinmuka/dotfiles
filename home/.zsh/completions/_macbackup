@@ -6,19 +6,19 @@ local -A opt_args
 local -a commands
 
 commands=(
-  'init:crea gli elenchi senza inclusioni attive'
-  'check:controlla configurazione e sorgenti locali'
-  'explain:spiega la classificazione di un percorso'
-  'layout:mostra le parti private dentro una cartella consultabile'
-  'preview:mostra la selezione locale o il piano remoto senza modifiche'
-  'run:esegue il backup sulle destinazioni abilitate'
-  'mount:monta le copie cloud in sola lettura'
-  "status:mostra l'esito memorizzato dell'ultima esecuzione"
-  "restore-icon:ripristina un'icona Finder da un file locale"
-  'forget:prepara o applica la rimozione selettiva di copie dal backup'
-  'versions:mostra le copie correnti e storiche di un file o una directory'
-  'restore:scarica una versione in un percorso locale esplicito'
-  'verify:confronta i file locali attuali con la copia corrente'
+  'init:crea la configurazione vuota'
+  'check:verifica sorgenti e regole'
+  'explain:mostra la regola di un percorso'
+  'layout:mostra le parti private'
+  'preview:simula il backup'
+  'run:esegue il backup'
+  'mount:apre il backup in sola lettura'
+  "status:mostra l'ultima esecuzione"
+  'restore-icon:ripristina un’icona Finder'
+  'forget:rimuove copie con un piano verificato'
+  'versions:elenca versioni e storico'
+  'restore:recupera un file o un symlink'
+  'verify:confronta locale e cloud'
 )
 
 _macbackup_absolute_path() {
@@ -29,10 +29,24 @@ _macbackup_absolute_path() {
   fi
 }
 
+# A single compact group avoids the separate aliases/descriptions emitted by
+# _arguments when the first word is only a dash.
+if (( CURRENT == 2 )) && [[ "$PREFIX" == -* && "$PREFIX" != *=* ]]; then
+  local -a global_options
+  global_options=(
+    '--config-dir:elenchi e settings alternativi'
+    '--help:guida ai comandi'
+    '--version:versione installata'
+    '-h:guida ai comandi'
+  )
+  _describe -t options 'opzioni globali' global_options
+  return
+fi
+
 _arguments -C -A '-*' \
-  '(- *)'{-h,--help}'[mostra aiuto]' \
-  '(- *)--version[mostra la versione]' \
-  '--config-dir=[directory degli elenchi]:directory assoluta:_macbackup_absolute_path -/' \
+  '(- *)'{-h,--help}'[guida ai comandi]' \
+  '(- *)--version[versione installata]' \
+  '--config-dir=[elenchi e settings alternativi]:directory assoluta:_macbackup_absolute_path -/' \
   '1:comando:->command' \
   '*::argomento:->arguments'
 
@@ -48,11 +62,11 @@ case "$state" in
       check)
         local -a check_options
         check_options=(
-          '--json[stampa il risultato in JSON]'
-          '--remote[controlla anche le destinazioni senza modificarle]'
+          '--json[output JSON]'
+          '--remote[verifica il cloud in sola lettura]'
         )
         if (( ${words[(Ie)--remote]} )); then
-          check_options+=('--target=[destinazione]:destinazione:(google proton all)')
+          check_options+=('--target=[servizio, default google]:servizio:(google proton all)')
         fi
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
@@ -61,88 +75,89 @@ case "$state" in
       explain)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--json[stampa il risultato in JSON]' \
-          '1:percorso assoluto:_macbackup_absolute_path'
+          '--json[output JSON]' \
+          '1:percorso assoluto da classificare:_macbackup_absolute_path'
         ;;
       layout)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--json[stampa il risultato in JSON]' \
+          '--json[output JSON]' \
           '1::cartella plain (predefinita: directory corrente):_macbackup_absolute_path -/'
         ;;
       preview)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '(--target)--local[mostra la selezione locale senza accesso cloud]' \
-          "(--local)--target=[destinazione dell'anteprima remota]:destinazione:(google proton all)" \
-          '--json[stampa il risultato in JSON]'
+          '(--target)--local[solo selezione locale]' \
+          "(--local)--target=[confronto cloud in sola lettura]:servizio:(google proton all)" \
+          '--json[output JSON]'
         ;;
       run)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--target=[destinazione del backup]:destinazione:(google proton all)' \
-          '--progress-depth=[livelli di cartelle attive rispetto alla home]:livelli:(1 2 3 4 5)' \
-          '--json[stampa il risultato in JSON]'
+          '--target=[servizio di backup]:servizio:(google proton all)' \
+          '--progress-depth=[livelli mostrati, default 2]:livelli:(1 2 3 4 5)' \
+          '--json[riepilogo finale JSON]'
         ;;
       mount)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--target=[servizio]:servizio:(google proton all)' \
-          '--area=[area da consultare]:area:(plain private all)' \
-          '--mountpoint=[cartella base per i montaggi]:directory assoluta:_macbackup_absolute_path -/'
+          '--target=[servizio da montare]:servizio:(google proton all)' \
+          '--area=[area, default all]:area:(plain private all)' \
+          '--mountpoint=[cartella base, default Desktop]:directory assoluta:_macbackup_absolute_path -/'
         ;;
       status)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--json[stampa il risultato in JSON]'
+          '--json[status stampa già JSON]'
         ;;
       restore-icon)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--file=[snapshot locale icon.json]:file assoluto:_macbackup_absolute_path' \
-          '--folder=[cartella esistente di destinazione]:cartella assoluta:_macbackup_absolute_path -/' \
-          "--replace[sostituisce un'icona già presente]" \
-          '--json[stampa il risultato in JSON]'
+          '--file=[snapshot icon.json locale]:file assoluto:_macbackup_absolute_path' \
+          "--folder=[cartella per l'icona]:cartella assoluta:_macbackup_absolute_path -/" \
+          "--replace[sostituisce un'icona esistente]" \
+          '--json[output JSON]'
         ;;
       forget)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--area=[area da cercare]:area:(plain private all)' \
-          '--target=[destinazione da cercare]:destinazione:(google proton all)' \
-          '--mode=[modalità di rimozione]:modalità:(trash permanent)' \
+          '--area=[area da ripulire]:area:(plain private all)' \
+          '--target=[servizio da ripulire]:servizio:(google proton all)' \
+          '--mode=[cestino o definitivo]:modalità:(trash permanent)' \
           '--plan=[ID del piano]:ID:' \
-          '--apply[applica il piano dopo una nuova verifica]' \
-          '--json[stampa il risultato in JSON]' \
-          '1:percorso assoluto:_macbackup_absolute_path'
+          '--apply[applica il piano verificato]' \
+          '--json[output JSON]' \
+          '1:percorso originale, barra finale per directory:_macbackup_absolute_path'
         ;;
       versions)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--target=[destinazione]:destinazione:(google proton all)' \
-          '--area=[area]:area:(plain private all)' \
-          '--files[elenca i file storici sotto una directory]' \
-          '--json[stampa il risultato in JSON]' \
+          '--target=[servizio da cercare]:servizio:(google proton all)' \
+          '--area=[area, default all]:area:(plain private all)' \
+          '--files[solo file negli storici]' \
+          '--json[output JSON]' \
           '1:percorso originale del file o della directory:_macbackup_absolute_path'
         ;;
       restore)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--target=[destinazione]:destinazione:(google proton)' \
-          '--area=[area]:area:(plain private)' \
-          '--version=[versione restituita da versions]:versione:' \
-          '--to=[file locale di destinazione]:file assoluto:_macbackup_absolute_path' \
-          '--replace[sostituisce un file locale già presente]' \
-          '--links[ricrea un collegamento simbolico da un file .rclonelink]' \
-          '--json[stampa il risultato in JSON]' \
+          '--target=[servizio di origine]:servizio:(google proton)' \
+          '--area=[area di origine]:area:(plain private)' \
+          '--version=[current o ID storico]:versione:' \
+          '--to=[percorso locale assoluto]:file assoluto:_macbackup_absolute_path' \
+          '--replace[sostituisce il file esistente]' \
+          '--links[ricrea il symlink]' \
+          '--json[output JSON]' \
           '1:percorso originale:_macbackup_absolute_path'
         ;;
       verify)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--target=[destinazione]:destinazione:(google proton all)' \
-          '--area=[area]:area:(plain private all)' \
-          '--download[confronta leggendo anche i dati remoti]' \
-          '--json[stampa il risultato in JSON]'
+          '--target=[servizio da confrontare]:servizio:(google proton all)' \
+          '--area=[area, default all]:area:(plain private all)' \
+          '--download[verifica anche il contenuto]' \
+          '--size-only[confronta solo percorsi e dimensioni]' \
+          '--json[output JSON]'
         ;;
     esac
     ;;
