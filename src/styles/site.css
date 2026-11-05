@@ -121,8 +121,8 @@ p { margin: 0 0 16px; }
 .code-window { border: 1px solid var(--line); border-radius: 14px; background: #111d31; overflow: hidden; }
 .code-window .label { padding: 11px 18px; border-bottom: 1px solid var(--line); color: #b4c1d3; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .code-window pre { margin: 0; padding: 20px; color: #e2ebf7; font-size: 13px; line-height: 1.8; }
-html.js-motion [data-code-ready]:not(.is-code-playing) .code-reveal-line { opacity: 0; }
-html.js-motion [data-code-ready].is-code-playing .code-reveal-line { animation: code-line-enter .2s ease-out both; animation-delay: calc(var(--line-index) * var(--code-step)); }
+html.js-motion .code-window[data-code-ready]:not(.is-code-playing) .code-reveal-line { opacity: 0; }
+html.js-motion .code-window[data-code-ready].is-code-playing .code-reveal-line { animation: code-line-enter .2s ease-out both; animation-delay: calc(var(--line-index) * var(--code-step)); }
 @keyframes code-line-enter { from { opacity: 0; } to { opacity: 1; } }
 .page-hero { padding-block: 85px 68px; max-width: 910px; }
 .product-title { display: flex; align-items: center; gap: 24px; margin: 18px 0 24px; }
@@ -140,7 +140,7 @@ html.js-motion [data-code-ready].is-code-playing .code-reveal-line { animation: 
 .chip.orange { border-color: #ffbd8475; color: var(--orange); }
 .stack { display: grid; gap: 14px; }
 .stack-row { display: flex; align-items: flex-start; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line); }
-.stack-row .index { min-width: 34px; color: var(--accent); }
+.stack-row .index { flex: 0 0 8ch; color: var(--accent); }
 .stack-row p { color: var(--muted); margin: 5px 0 0; }
 .note { padding: 20px 24px; border-left: 3px solid var(--accent); background: #e9efff; color: #435571; border-radius: 0 10px 10px 0; }
 .note p:last-child { margin-bottom: 0; }
@@ -304,7 +304,7 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 }
 @media (prefers-reduced-motion: reduce) {
   .hero .terminal pre { animation: none; }
-  html.js-motion [data-code-ready] .code-reveal-line { opacity: 1; animation: none; }
+  html.js-motion .code-window[data-code-ready] .code-reveal-line { opacity: 1; animation: none; }
   .theme-toggle { transition: none; }
   ::view-transition-old(page-content), ::view-transition-old(site-header) { animation: none; opacity: 0; }
   ::view-transition-new(page-content), ::view-transition-new(site-header) { animation: none; opacity: 1; }

@@ -68,7 +68,7 @@ function updateThemeColor() {
 
 function setupCodePreviews() {
   codeObserver?.disconnect();
-  const previews = document.querySelectorAll<HTMLElement>('.code-window, .doc-content pre');
+  const previews = document.querySelectorAll<HTMLElement>('.code-window');
   if (!motionPreference.matches && 'IntersectionObserver' in window) {
     codeObserver = new IntersectionObserver((entries, observer) => {
       for (const entry of entries) {
@@ -79,8 +79,9 @@ function setupCodePreviews() {
     }, { threshold: 0.15 });
   }
   previews.forEach((preview) => {
+    if (preview.closest('.doc-content')) return;
     if (preview.classList.contains('is-code-playing')) return;
-    const pre = preview.matches('pre') ? preview : preview.querySelector('pre');
+    const pre = preview.querySelector('pre');
     if (!pre) return;
     let lines = [...pre.querySelectorAll<HTMLElement>(':scope > code > span[id]')];
     if (!lines.length) {
