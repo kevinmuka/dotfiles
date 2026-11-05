@@ -1,0 +1,33 @@
+---
+import type { GuideHeading } from '../lib/live-guides';
+
+interface Props {
+  overview: string;
+  source: string;
+  english: string;
+  italian: string;
+  label: string;
+  html?: string;
+  headings?: GuideHeading[];
+  fallback: string;
+}
+
+const { overview, source, english, italian, label, html, headings = [], fallback } = Astro.props;
+---
+<main transition:name="page-content" data-guide="true">
+  {html ? <>
+    <div class="wrap doc-intro">
+      <a class="section-back" href={overview}>← Torna a {label}</a>
+      <p class="eyebrow">{label} / documentazione</p>
+      <p>Per verificare la versione più recente, <a href={source} target="_blank" rel="noopener noreferrer">consulta la guida su GitHub ↗</a>.</p>
+      <nav aria-label="Lingua della guida" class="language-switch"><span class="language-pill" aria-hidden="true"></span><a href={english} lang="en">English</a><a aria-current="page" href={italian} lang="it">Italiano</a></nav>
+    </div>
+    <div class="wrap document-layout">
+      <aside class="doc-nav"><p class="eyebrow">In questa pagina</p><nav aria-label="Indice della guida"><ul>{headings.map((heading) => <li class={`toc-level-${heading.level}`}><a href={`#${heading.id}`} set:html={heading.label} /></li>)}</ul></nav></aside>
+      <article class="doc-content" set:html={html} />
+    </div>
+  </> : <>
+    <div class="wrap guide-fallback">La versione aggiornata non è disponibile al momento. Qui sotto trovi la copia salvata; <a href={source} target="_blank" rel="noopener noreferrer">puoi leggere la guida su GitHub ↗</a>.</div>
+    <Fragment set:html={fallback} />
+  </>}
+</main>

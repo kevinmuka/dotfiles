@@ -59,10 +59,10 @@ export function isTextFile(path: string) {
 
 export class NonTextFileError extends Error {}
 
-export async function getFile(key: RepositoryKey, path: string): Promise<string> {
+export async function getFile(key: RepositoryKey, path: string, signal?: AbortSignal): Promise<string> {
   const valid = normalizePath(path);
   if (!valid) throw new Error('Preview unavailable for this file');
-  const response = await fetch(rawUrl(key, valid));
+  const response = await fetch(rawUrl(key, valid), { signal });
   if (!response.ok) throw new Error(`GitHub file request failed (${response.status})`);
   const length = Number(response.headers.get('content-length') || 0);
   if (length > 300_000) throw new NonTextFileError('This file is too large to preview');

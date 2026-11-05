@@ -68,24 +68,42 @@ function updateThemeColor() {
 
 function setupCodePreviews() {
   codeObserver?.disconnect();
-  if (motionPreference.matches || !('IntersectionObserver' in window)) {
-    document.querySelectorAll<HTMLElement>('.code-window').forEach((window) => window.classList.add('is-code-playing'));
-    return;
+  const previews = document.querySelectorAll<HTMLElement>('.code-window, .doc-content pre');
+  if (!motionPreference.matches && 'IntersectionObserver' in window) {
+    codeObserver = new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-code-playing');
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0.15 });
   }
-  codeObserver = new IntersectionObserver((entries, observer) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add('is-code-playing');
-      observer.unobserve(entry.target);
+  previews.forEach((preview) => {
+    if (preview.classList.contains('is-code-playing')) return;
+    const pre = preview.matches('pre') ? preview : preview.querySelector('pre');
+    if (!pre) return;
+    let lines = [...pre.querySelectorAll<HTMLElement>(':scope > code > span[id]')];
+    if (!lines.length) {
+      const container = pre.querySelector(':scope > code') ?? pre;
+      if (container.children.length) return;
+      const content = container.textContent?.replace(/\n$/, '') ?? '';
+      if (!content) return;
+      lines = content.split('\n').map((content) => {
+        const line = document.createElement('span');
+        line.className = 'code-reveal-line';
+        line.textContent = content;
+        return line;
+      });
+      container.replaceChildren(...lines.flatMap((line, index) => index ? [document.createTextNode('\n'), line] : [line]));
     }
-  }, { threshold: 0.15 });
-  document.querySelectorAll<HTMLElement>('.code-window').forEach((window) => {
-    const code = window.querySelector('pre');
-    if (!code) return;
-    const lines = code.textContent?.trimEnd().split('\n').length ?? 8;
-    window.style.setProperty('--code-lines', String(lines));
-    window.style.setProperty('--code-duration', `${Math.min(1.8, Math.max(0.7, lines * 0.12))}s`);
-    codeObserver?.observe(window);
+    lines.forEach((line, index) => {
+      line.classList.add('code-reveal-line');
+      line.style.setProperty('--line-index', String(index));
+    });
+    preview.style.setProperty('--code-step', `${Math.min(0.12, 1.5 / lines.length)}s`);
+    preview.dataset.codeReady = '';
+    if (codeObserver) codeObserver.observe(preview);
+    else preview.classList.add('is-code-playing');
   });
 }
 
@@ -188,7 +206,8 @@ document.addEventListener('astro:before-swap', (event) => {
         if (link.lang === event.newDocument.documentElement.lang) link.setAttribute('aria-current', 'page');
         else link.removeAttribute('aria-current');
       }
-      nextGuideLayout.classList.add('guide-enter');
+      nextGuideLayout.querySelector('.doc-nav')?.classList.add('guide-enter');
+      nextGuideLayout.querySelector('.doc-content')?.classList.add('guide-enter');
       currentGuideLayout.replaceWith(nextGuideLayout);
     };
     return;
@@ -241,8 +260,10 @@ document.addEventListener('astro:after-swap', () => {
   guideScroll = null;
   if (explorerScroll) {
     const headerHeight = document.querySelector<HTMLElement>('.site-header')?.offsetHeight ?? 60;
+    const sidebar = document.querySelector<HTMLElement>('.explorer-sidebar');
+    const stickyTop = sidebar ? Number.parseFloat(getComputedStyle(sidebar).top) : NaN;
     const mobileTarget = document.querySelector<HTMLElement>(explorerScroll.repoChanged ? '.explorer-sidebar' : '.explorer-content');
-    const fileTop = Math.max(0, explorerScroll.layoutTop - headerHeight - 16);
+    const fileTop = Math.max(0, explorerScroll.layoutTop - (Number.isFinite(stickyTop) ? stickyTop : headerHeight + 16));
     const mobileTop = mobileTarget ? Math.max(0, mobileTarget.getBoundingClientRect().top + scrollY - headerHeight - 16) : fileTop;
     const top = matchMedia('(max-width: 850px)').matches ? mobileTop : Math.min(explorerScroll.y, fileTop);
     scrollTo({ left: explorerScroll.x, top, behavior: 'instant' });

@@ -3,7 +3,7 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 import { pages } from '../data/pages';
 
 export function getStaticPaths() {
-  return pages.slice(1).map((page) => ({ params: { slug: page.slug }, props: { page } }));
+  return pages.slice(1).filter((page) => !['/macbackup/docs/it', '/nvim/docs/it'].includes(page.path)).map((page) => ({ params: { slug: page.slug }, props: { page } }));
 }
 
 const { page } = Astro.props;
