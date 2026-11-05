@@ -16,7 +16,7 @@ import unittest
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "home/.config/scripts/macbackup"
+SCRIPT = Path(__file__).resolve().parents[2] / "home/.config/scripts/macbackup"
 M = runpy.run_path(str(SCRIPT))
 
 
@@ -221,7 +221,7 @@ except module['TransferInterrupted'] as exc:
         finally:
             script_globals['perform_sync'] = original
 
-    def test_private_round_trip_and_explicit_revocation_preserve_old_copy(self):
+    def test_private_round_trip_and_explicit_revocation_archive_old_copy(self):
         self.rules(private=True)
         self.run_backup()
         self.assertFalse(self.remote_path(self.secret).exists())
@@ -233,8 +233,12 @@ except module['TransferInterrupted'] as exc:
         self.secret.write_text("synthetic private v2")
         self.rules(private=False)
         self.run_backup()
-        result = subprocess.run(["rclone", "cat", source], env=self.environment, capture_output=True, text=True, check=True)
-        self.assertEqual(result.stdout, "synthetic private v1")
+        history = subprocess.run(['rclone', 'lsf', 'localcrypt:history', '--recursive', '--files-only'],
+                                 env=self.environment, capture_output=True, text=True, check=True)
+        old = next(name for name in history.stdout.splitlines() if name.endswith('/.env'))
+        result = subprocess.run(['rclone', 'cat', 'localcrypt:history/' + old],
+                                env=self.environment, capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, 'synthetic private v1')
 
     def test_private_same_size_same_mtime_change_is_saved_and_archived(self):
         self.rules(private=True)
@@ -291,14 +295,27 @@ except module['TransferInterrupted'] as exc:
         self.run_backup()
         self.assertEqual(self.remote_path(self.normal).read_text(), "synthetic normal v2")
 
-    def test_new_exclusion_does_not_delete_or_update_existing_copy(self):
+    def test_new_exclusion_archives_existing_copy_with_reason(self):
         self.run_backup()
         self.normal.write_text("changed but excluded")
         self.rules(excluded=True)
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        planned = next(row for row in json.loads(preview.stdout)['results']
+                       if row['area'] == 'plain' and row['kind'] == 'files')
+        self.assertEqual(planned['archive_policy'], 1)
+        self.assertEqual(planned['policy_archives'][0]['reason'], 'Esclusione assoluta.')
+        self.assertTrue(self.remote_path(self.normal).exists())
+        result = self.run_backup()
+        self.assertFalse(self.remote_path(self.normal).exists())
+        self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('normal.txt')).read_text(),
+                         'synthetic normal v1')
+        self.assertEqual(result['results'][0]['policy_archived'][0]['reason'], 'Esclusione assoluta.')
+        self.rules(excluded=False)
         self.run_backup()
-        self.assertEqual(self.remote_path(self.normal).read_text(), "synthetic normal v1")
+        self.assertEqual(self.remote_path(self.normal).read_text(), 'changed but excluded')
 
-    def test_new_directory_name_pattern_preserves_old_cloud_copy(self):
+    def test_new_directory_name_pattern_archives_old_cloud_copy(self):
         old = self.source / "node_modules/package.txt"
         old.parent.mkdir()
         old.write_text("synthetic dependency v1")
@@ -307,12 +324,13 @@ except module['TransferInterrupted'] as exc:
         old.write_text("synthetic dependency v2")
         (self.config / "explicit-only-patterns.txt").write_text(".env\n.env.*\nnode_modules\n")
         result = self.run_backup()
-        self.assertEqual(self.remote_path(old).read_text(), "synthetic dependency v1")
+        self.assertFalse(self.remote_path(old).exists())
         self.assertFalse(any(item["archive_deleted"] for item in result["results"]))
         history = self.base / "plain-store/MacBackup/plain/history"
-        self.assertFalse(history.exists())
+        self.assertEqual(next(history.rglob('package.txt')).read_text(), 'synthetic dependency v1')
+        self.assertEqual(result['results'][0]['archive_policy'], 1)
 
-    def test_git_history_routes_to_crypt_and_old_plain_copy_is_retained(self):
+    def test_git_history_routes_to_crypt_and_archives_old_plain_copy(self):
         object_file = self.source / '.git/objects/ab/cdef'
         object_file.parent.mkdir(parents=True)
         object_file.write_text('synthetic git object')
@@ -326,7 +344,9 @@ except module['TransferInterrupted'] as exc:
         (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
         result = self.run_backup()
         self.assertFalse(any(item['archive_deleted'] for item in result['results']))
-        self.assertTrue(self.remote_path(object_file).exists())
+        self.assertFalse(self.remote_path(object_file).exists())
+        self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('cdef')).read_text(),
+                         'synthetic git object')
         encrypted = 'localcrypt:current/' + str(object_file).lstrip('/')
         restored = subprocess.run(['rclone', 'cat', encrypted], env=self.environment,
                                   capture_output=True, text=True, check=True)
@@ -336,19 +356,107 @@ except module['TransferInterrupted'] as exc:
                                    capture_output=True, text=True)
         self.assertNotIn('.env', forbidden.stdout.splitlines())
 
-    def test_new_ignored_file_rule_keeps_old_cloud_copy(self):
+    def test_versions_groups_history_of_crypt_git_directory(self):
+        git_dir = self.source / '.git'
+        object_file = git_dir / 'objects/ab/cdef'
+        object_file.parent.mkdir(parents=True)
+        object_file.write_text('synthetic git object v1')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nprivate_directory_names = [".git"]\n'))
+        (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
+        self.run_backup()
+        object_file.write_text('synthetic git object v2')
+        self.run_backup()
+        listing = self.cli('versions', str(git_dir), '--target', 'google',
+                           '--area', 'private', '--json')
+        self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
+        groups = json.loads(listing.stdout)['versions']
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len([group for group in groups if group['version'] != 'current']), 1)
+        self.assertTrue(all(group['area'] == 'private' for group in groups))
+        self.assertTrue(all(group['count'] == 1 for group in groups))
+        self.assertEqual({item['path'] for group in groups for item in group['items']},
+                         {str(object_file)})
+
+    def test_exact_plain_git_directory_archives_old_private_copy(self):
+        git_dir = self.source / '.git'
+        object_file = git_dir / 'objects/ab/cdef'
+        object_file.parent.mkdir(parents=True)
+        object_file.write_text('synthetic git object')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nprivate_directory_names = [".git"]\n'))
+        (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
+        self.run_backup()
+        self.assertFalse(self.remote_path(object_file).exists())
+        (self.config / 'plain-paths.txt').write_text(str(self.source) + '\n' + str(git_dir) + '\n')
+        result = self.run_backup()
+        self.assertEqual(self.remote_path(object_file).read_text(), 'synthetic git object')
+        private_result = next(item for item in result['results']
+                              if item['area'] == 'private' and item['kind'] == 'files')
+        self.assertEqual(private_result['archive_policy'], 1)
+        old = subprocess.run(['rclone', 'lsf', 'localcrypt:history', '--recursive', '--files-only'],
+                             env=self.environment, capture_output=True, text=True, check=True)
+        self.assertTrue(any(name.endswith('/.git/objects/ab/cdef') for name in old.stdout.splitlines()))
+
+    def test_new_ignored_file_rule_archives_old_cloud_copy(self):
         old = self.source / '.DS_Store'
         old.write_text('synthetic finder metadata')
         settings = self.config / 'settings.toml'
         settings.write_text(settings.read_text().replace(
-            'ignored_file_names = [".DS_Store"]', 'ignored_file_names = []'))
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nignored_file_names = []\n'))
         self.run_backup()
         self.assertTrue(self.remote_path(old).exists())
         settings.write_text(settings.read_text().replace(
             'ignored_file_names = []', 'ignored_file_names = [".DS_Store"]'))
         result = self.run_backup()
         self.assertFalse(any(item['archive_deleted'] for item in result['results']))
+        self.assertFalse(self.remote_path(old).exists())
+        self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('.DS_Store')).read_text(),
+                         'synthetic finder metadata')
+
+    def test_exact_inclusion_overrides_ignored_file_name(self):
+        ignored = self.source / '.DS_Store'
+        ignored.write_text('synthetic metadata')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nignored_file_names = [".DS_Store"]\n'))
+        self.run_backup()
+        self.assertFalse(self.remote_path(ignored).exists())
+        (self.config / 'plain-paths.txt').write_text(str(self.source) + '\n' + str(ignored) + '\n')
+        self.run_backup()
+        self.assertEqual(self.remote_path(ignored).read_text(), 'synthetic metadata')
+        (self.config / 'private-paths.txt').write_text(str(ignored) + '\n')
+        result = self.run_backup()
+        self.assertFalse(self.remote_path(ignored).exists())
+        old_plain = self.base / 'plain-store/MacBackup/plain/history'
+        self.assertEqual(next(old_plain.rglob('.DS_Store')).read_text(), 'synthetic metadata')
+        private_file = subprocess.run(['rclone', 'cat', 'localcrypt:current/' + str(ignored).lstrip('/')],
+                                      env=self.environment, capture_output=True, text=True, check=True)
+        self.assertEqual(private_file.stdout, 'synthetic metadata')
+        self.assertEqual(next(row for row in result['results']
+                              if row['area'] == 'plain' and row['kind'] == 'files')['archive_policy'], 1)
+
+    @unittest.skipUnless(shutil.which('git'), 'Git is needed for .gitignore matching')
+    def test_new_gitignore_rule_archives_old_cloud_copy(self):
+        old = self.source / 'generated.log'
+        old.write_text('synthetic generated v1')
+        self.run_backup()
         self.assertTrue(self.remote_path(old).exists())
+        old.write_text('synthetic generated v2')
+        (self.source / '.gitignore').write_text('*.log\n')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nuse_gitignore = true\n'))
+        result = self.run_backup()
+        self.assertFalse(any(item['archive_deleted'] for item in result['results']))
+        self.assertFalse(self.remote_path(old).exists())
+        self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('generated.log')).read_text(),
+                         'synthetic generated v1')
+        self.assertEqual(result['results'][0]['policy_archived'][0]['rule'],
+                         str(self.source / '.gitignore') + ':1:*.log')
+        self.assertTrue(self.remote_path(self.source / '.gitignore').exists())
 
     def test_verify_reports_match_and_changed_local_file_without_calling_it_corruption(self):
         self.run_backup()
@@ -389,6 +497,65 @@ except module['TransferInterrupted'] as exc:
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(self.remote_path(self.normal).exists())
         self.assertIn("max_delete", result.stdout)
+
+    def test_policy_archive_limit_blocks_run_but_preview_shows_plan(self):
+        extra = self.source / 'extra.txt'
+        extra.write_text('synthetic extra')
+        self.run_backup()
+        (self.config / 'exclude-paths.txt').write_text(str(self.source) + '\n')
+        self.settings(limit=1)
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        row = next(item for item in json.loads(preview.stdout)['results']
+                   if item['area'] == 'plain' and item['kind'] == 'files')
+        self.assertEqual(row['archive_policy'], 2)
+        self.assertTrue(row['archive_limit_exceeded'])
+        self.assertTrue(self.remote_path(extra).exists())
+        run = self.cli('run', '--target', 'google', '--json')
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('max_delete', run.stdout)
+        self.assertTrue(self.remote_path(extra).exists())
+        self.assertTrue(self.remote_path(self.normal).exists())
+        self.assertFalse((self.base / 'plain-store/MacBackup/plain/history').exists())
+
+    def test_removed_inclusion_archives_old_copy(self):
+        extra = self.source / 'extra.txt'
+        extra.write_text('synthetic extra')
+        self.run_backup()
+        (self.config / 'plain-paths.txt').write_text(str(self.normal) + '\n')
+        result = self.run_backup()
+        self.assertFalse(self.remote_path(extra).exists())
+        self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('extra.txt')).read_text(),
+                         'synthetic extra')
+        row = next(item for item in result['results'] if item['area'] == 'plain' and item['kind'] == 'files')
+        self.assertEqual(row['policy_archived'][0]['reason'], 'Percorso non selezionato.')
+
+    def test_removing_all_inclusions_archives_existing_current(self):
+        self.run_backup()
+        (self.config / 'plain-paths.txt').write_text('')
+        result = self.run_backup()
+        self.assertFalse(self.remote_path(self.normal).exists())
+        history = self.base / 'plain-store/MacBackup/plain/history'
+        self.assertEqual(next(history.rglob('normal.txt')).read_text(), 'synthetic normal v1')
+        row = next(item for item in result['results'] if item['area'] == 'plain' and item['kind'] == 'files')
+        self.assertEqual(row['archive_policy'], 1)
+
+    def test_forget_removes_policy_archived_copy_from_history(self):
+        self.run_backup()
+        self.rules(excluded=True)
+        self.run_backup()
+        self.assertFalse(self.remote_path(self.normal).exists())
+        history = self.base / 'plain-store/MacBackup/plain/history'
+        self.assertEqual(len(list(history.rglob('normal.txt'))), 1)
+        plan_call = self.cli('forget', str(self.normal), '--target', 'google',
+                             '--area', 'plain', '--mode', 'trash', '--json')
+        self.assertEqual(plan_call.returncode, 0, plan_call.stdout + plan_call.stderr)
+        plan = json.loads(plan_call.stdout)
+        self.assertEqual(plan['count'], 1)
+        self.assertEqual(plan['items'][0]['version'], next(history.iterdir()).name)
+        applied = self.cli('forget', '--plan', plan['plan_id'], '--apply', '--json')
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        self.assertFalse(list(history.rglob('normal.txt')))
 
     def test_private_destination_must_really_be_crypt(self):
         self.rules(private=True)

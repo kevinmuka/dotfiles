@@ -18,7 +18,7 @@ import time
 import unittest
 
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 INTEGRATION = REPO / "home/.zsh/integrations/macbackup.zsh"
 COMPLETION = REPO / "home/.zsh/completions/_macbackup"
 ZSH = shutil.which("zsh")

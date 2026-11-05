@@ -10,12 +10,13 @@ commands=(
   'check:controlla configurazione e sorgenti locali'
   'explain:spiega la classificazione di un percorso'
   'layout:mostra le parti private dentro una cartella consultabile'
-  'preview:mostra la selezione locale'
+  'preview:mostra la selezione locale o il piano remoto senza modifiche'
   'run:esegue il backup sulle destinazioni abilitate'
+  'mount:monta le copie cloud in sola lettura'
   "status:mostra l'esito memorizzato dell'ultima esecuzione"
   "restore-icon:ripristina un'icona Finder da un file locale"
   'forget:prepara o applica la rimozione selettiva di copie dal backup'
-  'versions:mostra le copie correnti e storiche di un file'
+  'versions:mostra le copie correnti e storiche di un file o una directory'
   'restore:scarica una versione in un percorso locale esplicito'
   'verify:confronta i file locali attuali con la copia corrente'
 )
@@ -83,6 +84,13 @@ case "$state" in
           '--progress-depth=[livelli di cartelle attive rispetto alla home]:livelli:(1 2 3 4 5)' \
           '--json[stampa il risultato in JSON]'
         ;;
+      mount)
+        _arguments \
+          '(- *)'{-h,--help}'[mostra aiuto]' \
+          '--target=[servizio]:servizio:(google proton all)' \
+          '--area=[area da consultare]:area:(plain private all)' \
+          '--mountpoint=[cartella base per i montaggi]:directory assoluta:_macbackup_absolute_path -/'
+        ;;
       status)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
@@ -112,7 +120,7 @@ case "$state" in
           '(- *)'{-h,--help}'[mostra aiuto]' \
           '--target=[destinazione]:destinazione:(google proton all)' \
           '--area=[area]:area:(plain private all)' \
-          '--files[mostra i singoli elementi di ogni versione della directory]' \
+          '--files[elenca i file storici sotto una directory]' \
           '--json[stampa il risultato in JSON]' \
           '1:percorso originale del file o della directory:_macbackup_absolute_path'
         ;;

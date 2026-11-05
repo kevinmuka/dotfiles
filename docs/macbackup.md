@@ -1,12 +1,12 @@
 # macbackup: guida operativa e progetto del backup
 
-Documento aggiornato il 2 novembre 2026.
+Documento aggiornato il 5 novembre 2026.
 
-**Stato: versione 0.9.5.** Sono disponibili `init`, `check`, `explain`, `layout`, `preview --local`, `check --remote`, `preview --target`, `run --target`, `status`, `restore-icon`, `forget`, `versions`, `restore` per un file e `verify` della copia corrente. Le funzioni remote usano rclone, comprese cifratura e archiviazione delle vecchie versioni. Le destinazioni sono disabilitate nella configurazione iniziale. Non sono ancora disponibili il ripristino di interi alberi e il montaggio del disco. `restore-icon` recupera soltanto un'icona da un file locale.
+**Stato: versione 0.12.3.** Sono disponibili `init`, `check`, `explain`, `layout`, `preview --local`, `check --remote`, `preview --target`, `run --target`, `mount --target`, `status`, `restore-icon`, `forget`, `versions`, `restore` per un file e `verify` della copia corrente. Le funzioni remote usano rclone, comprese cifratura e archiviazione delle vecchie versioni. Le destinazioni sono disabilitate nella configurazione iniziale. Non è ancora disponibile il ripristino automatico di interi alberi; il montaggio in sola lettura è disponibile su macOS. `restore-icon` recupera soltanto un'icona da un file locale.
 
 È disponibile anche il completamento nativo per Zsh di comandi, opzioni e percorsi, integrato nei dotfiles.
 
-Il trasferimento è stato collaudato con veri comandi rclone su remotes locali e crypt sintetici, e poi su Google Drive con soli file fittizi in cartelle di test separate. Su Google sono riusciti copia consultabile, recupero del file cifrato, esclusione del file non autorizzato e recupero di una versione storica cifrata. Il primo backup reale Google è stato avviato e poi interrotto su richiesta dell’utente: non è completo. Proton non è ancora configurato. Alla verifica immediatamente successiva risultavano 216 file plain per 429.002.179 byte e nessun file nell’area private. `status` non registrava una run conclusa. Le sezioni indicate come future non sono funzionalità già presenti.
+Il trasferimento è stato collaudato con veri comandi rclone su remotes locali e crypt sintetici e, per le funzioni delle prime versioni, su Google Drive con file fittizi in cartelle di test separate. L'archiviazione automatica per cambio di policy della versione 0.9.8 è stata verificata con remotes locali e crypt sintetici; non è ancora stata provata sul Google Drive personale. I numeri delle prime run e dei primi test Google riportati più avanti sono cronologia del progetto, non lo stato attuale del backup. Per conoscere l'ultimo esito registrato usare `macbackup status`; per confrontare il cloud con le sorgenti locali usare `macbackup verify --target google`. Proton non è ancora configurato. Le sezioni indicate come future non sono funzionalità già presenti.
 
 ## Avvio della versione locale
 
@@ -46,7 +46,7 @@ Codici di uscita: 0 per il completamento del controllo richiesto, 1 per errori r
 
 I collegamenti simbolici vengono identificati come elementi da conservare, senza attraversarne le directory di destinazione. I file speciali scoperti durante la scansione vengono saltati con avviso; se selezionati come sorgenti esatte producono errore. La scansione blocca conflitti di identità fra file normali e privati, e alias osservati di file protetti che ne aggirerebbero l'inclusione esatta. Non riconosce copie indipendenti del medesimo contenuto.
 
-Il selettore protegge le posizioni standard della configurazione rclone, anche quando collegate a un percorso reale diverso, e lo stato operativo standard di macbackup. L'uso di un percorso rclone personalizzato richiede di includerlo esplicitamente nelle protezioni: non è ancora rilevato automaticamente dal selettore. Il controllo dell'identità attesa dei volumi esterni non è implementato; attualmente una sorgente mancante produce errore, ma un mount errato non è certificato.
+Il selettore protegge le posizioni standard della configurazione rclone, anche quando collegate a un percorso reale diverso, e lo stato operativo standard di macbackup. I montaggi predefiniti `~/Desktop/<target>`, `~/Desktop/<target>-plain` e `~/Desktop/<target>-private` sono esclusi anche quando non sono montati. L'uso di un percorso rclone personalizzato richiede di includerlo esplicitamente nelle protezioni: non è ancora rilevato automaticamente dal selettore. Il controllo dell'identità attesa dei volumi esterni non è implementato; attualmente una sorgente mancante produce errore, ma un mount errato non è certificato.
 
 Per eseguire i test dal repository dotfiles, senza creare cache Python:
 
@@ -65,6 +65,7 @@ max_delete = 25
 [policy]
 private_directory_names = [".git"]
 ignored_file_names = [".DS_Store", " ← ", ".localized"]
+use_gitignore = false
 
 [targets.google]
 enabled = true
@@ -107,11 +108,11 @@ macbackup run --target google
 macbackup status
 ```
 
-`check --remote` legge gli inventari e controlla tipi e capacità necessari; non scrive sul cloud e non prova un recupero. `preview --target` legge anche i contenuti locali necessari ai confronti di integrità ed esegue il dry-run di rclone: non modifica il cloud. Mostra quanti file sono selezionati e quanti verrebbero archiviati perché cancellati; non mostra ancora un elenco completo di tutte le sostituzioni.
+`check --remote` legge gli inventari e controlla tipi e capacità necessari; non scrive sul cloud e non prova un recupero. `preview --target` legge anche i contenuti locali necessari ai confronti di integrità ed esegue il dry-run di rclone: non modifica il cloud. Mostra i file selezionati, le archiviazioni per cancellazione locale e le copie da archiviare per cambio di policy, con il motivo e la regola attuale. Non elenca tutte le sostituzioni dei file modificati.
 
-`run` trasferisce soltanto i percorsi ammessi, conserva le copie sostituite o cancellate sotto history/RUN_ID e registra gli esiti distinti delle aree. Non esegue pulizie dello storico. `max_delete` è il limite di archiviazioni dovute a cancellazioni per area e per destinazione: viene controllato prima dei trasferimenti e passato anche a rclone. Il valore iniziale 25 va rivisto prima dell'automazione; non è una politica di conservazione.
+`run` trasferisce soltanto i percorsi ammessi, conserva le copie sostituite, cancellate o non più ammesse sotto `history/RUN_ID` della rispettiva area e registra gli esiti distinti delle aree. Non esegue pulizie dello storico. `max_delete` limita la somma delle archiviazioni per cancellazione locale e cambio di policy, inclusi gli snapshot delle icone, per area e per destinazione. Il limite è controllato per tutte le aree prima dei trasferimenti; rclone riceve inoltre il limite per le cancellazioni che gestisce durante la sincronizzazione. Il valore iniziale 25 va rivisto prima dell'automazione; non è una politica di conservazione.
 
-Un percorso incluso singolarmente deve esistere: se manca una sorgente obbligatoria, la run si ferma prima dei trasferimenti. L'archiviazione automatica per cancellazione riguarda invece i file mancanti dentro una cartella selezionata che esiste ancora. Per esempio, cancellare `.ssh/config` può archiviarne la copia se `.ssh` è selezionata ed esiste; la scomparsa dell'intera `.ssh` blocca il backup. Togliere una voce dagli elenchi interrompe la gestione futura di quella voce e conserva le copie cloud.
+Un percorso incluso singolarmente deve esistere: se manca una sorgente obbligatoria, la run si ferma prima dei trasferimenti. L'archiviazione automatica per cancellazione riguarda invece i file mancanti dentro una cartella selezionata che esiste ancora. Per esempio, cancellare `.ssh/config` può archiviarne la copia se `.ssh` è selezionata ed esiste; la scomparsa dell'intera `.ssh` blocca il backup. Togliere una voce dagli elenchi sposta alla prossima run le vecchie copie di quel percorso da `current` a `history`, senza eliminarle.
 
 Le operazioni remote condividono un blocco locale per impedire esecuzioni contemporanee. Gli elenchi temporanei e lo stato sono protetti e rimangono fuori dal repository. Non sono conservati contenuti dei file nei registri. `status` descrive l'ultima run richiesta, anche parziale: non certifica ogni destinazione da sempre, non verifica la raggiungibilità attuale e non implica un controllo completo dello storico. Durante `run`, rclone mostra nel terminale l’avanzamento della fase in corso; `status` si aggiorna soltanto al termine della run. Un’interruzione durante la fase di pianificazione può ancora non produrre un nuovo stato.
 
@@ -129,7 +130,7 @@ Le icone vengono recuperate su macOS; l'app Google Drive sul telefono usa la pro
 
 Uno snapshot per la cartella `/Users/kevinmuka/Desktop/Photography` viene salvato in `plain/macos-icons/current/Users/kevinmuka/Desktop/Photography/icon.json`. Le versioni precedenti stanno in `plain/macos-icons/history/RUN_ID/.../icon.json`. Per una cartella privata la stessa struttura è sotto il remote crypt, quindi anche i dati delle icone sono cifrati.
 
-Gli snapshot seguono inclusioni ed esclusioni come i file ordinari. Una nuova esclusione conserva la copia remota esistente. La rimozione locale di un'icona dentro una cartella ancora selezionata archivia la vecchia copia; un'icona invariata non deve creare nuove versioni storiche. Il limite max_delete comprende file e snapshot delle icone per ciascuna area. Gli snapshot temporanei sono nella directory di stato protetta e vengono rimossi alla fine dell'operazione. Un file o un singolo attributo icona oltre 64 MiB blocca la relativa area con errore, senza ometterlo silenziosamente.
+Gli snapshot seguono inclusioni ed esclusioni come i file ordinari. Una nuova esclusione archivia lo snapshot remoto esistente nella stessa area. La rimozione locale di un'icona dentro una cartella ancora selezionata archivia la vecchia copia; un'icona invariata non deve creare nuove versioni storiche. Il limite `max_delete` comprende file e snapshot delle icone per ciascuna area. Gli snapshot temporanei sono nella directory di stato protetta e vengono rimossi alla fine dell'operazione. Un file o un singolo attributo icona oltre 64 MiB blocca la relativa area con errore, senza ometterlo silenziosamente.
 
 `check` conta le icone usando i soli nomi e metadati ordinari; non legge il resource fork. La lettura dei contenuti necessari avviene durante l'anteprima remota o il trasferimento. La stima dei byte della scansione locale non include i resource fork né l'aumento di dimensione dovuto alla codifica JSON.
 
@@ -157,7 +158,7 @@ Se l'app è in Testing, il proprio account deve essere aggiunto in Google Auth P
 
 ### Pagine pubbliche per il consenso Google
 
-Con l'autorizzazione dell'utente è stato creato direttamente su GitHub il branch [gh-pages di kevinmuka/dotfiles](https://github.com/kevinmuka/dotfiles/tree/gh-pages). GitHub Pages pubblica quel branch dalla sua radice. Il sito è stato verificato con risposte HTTP 200 e confronto dei contenuti pubblici con i file preparati. Il branch contiene soltanto cinque file statici:
+Questa sezione descrive la prima pubblicazione delle pagine di consenso. All'epoca, con l'autorizzazione dell'utente, fu creato il branch `gh-pages` di `kevinmuka/dotfiles` e pubblicato tramite GitHub Pages. In seguito il sito è stato trasferito su Vercel, con dominio `dotfiles.kevinmuka.dev`, e il branch del sito è stato rinominato `site`. I valori seguenti sono quelli usati nella prima configurazione OAuth: prima di modificarli in Google Auth Platform, confrontarli con i campi Branding effettivamente salvati. La prima versione del branch conteneva:
 
 ```text
 index.html
@@ -167,7 +168,7 @@ macbackup/style.css
 .nojekyll
 ```
 
-La radice [kevinmuka.github.io/dotfiles/](https://kevinmuka.github.io/dotfiles/) può essere usata in futuro per documentare altri strumenti dei dotfiles. La sezione macbackup mantiene URL distinti e stabili:
+La sezione macbackup mantiene pagine distinte. I seguenti URL sono storici:
 
 | Campo in Google Auth Platform → Branding | Valore |
 | --- | --- |
@@ -177,7 +178,7 @@ La radice [kevinmuka.github.io/dotfiles/](https://kevinmuka.github.io/dotfiles/)
 
 Dopo il salvataggio si torna in Audience → Publish app. Se si cambiano gli URL in futuro, bisogna aggiornare Branding; se cambia il dominio, anche Authorised domains. Il passaggio a Production riguarda la disponibilità del client OAuth e il limite di Testing: non condivide le cartelle del backup e non pubblica token o chiavi.
 
-Il branch è stato creato sul remoto tramite API, senza cambiare il checkout locale `/Users/kevinmuka/.dotfiles` e senza pubblicare le modifiche locali del programma su main. Un branch è una versione del repository, non una nuova directory sul Mac. Per vederne il riferimento nella copia locale si può eseguire `git -C /Users/kevinmuka/.dotfiles fetch origin`; questo non cambia il branch attualmente aperto. Per modificare gh-pages sul Mac è opportuno usare una copia o un worktree separato: cambiare branch nel checkout che alimenta i collegamenti dei dotfiles cambierebbe anche quelle configurazioni attive. Le pagine pubbliche includono l'email di supporto concordata, non la configurazione del backup.
+Il branch iniziale era stato creato sul remoto senza cambiare il checkout locale `/Users/kevinmuka/.dotfiles` e senza pubblicare le modifiche locali del programma su main. Il sito attuale viene mantenuto in una copia separata dal checkout che alimenta i collegamenti dei dotfiles. Le pagine pubbliche non contengono la configurazione del backup.
 
 Dopo aver confermato lo stato In production, occorre ricollegare il remote nel proprio terminale con `rclone config reconnect gdrive:` per ottenere una nuova autorizzazione nel nuovo stato. Client ID, Client secret e chiavi crypt rimangono quelli configurati; non vanno rigenerati. L'utente ha confermato di aver pubblicato l'app e ripetuto la riconnessione. Subito dopo `rclone about gdrive:` e `macbackup check --remote --target google` sono riusciti in sola lettura. Questi controlli verificano l'accesso, non leggono lo stato di pubblicazione da Google Auth Platform.
 
@@ -197,7 +198,7 @@ La pulizia delle vecchie cartelle di prova ha inizialmente restituito `403 appNo
 
 Con le impostazioni usate nelle prime prove, rclone spostava gli elementi nel cestino Google; non era una cancellazione definitiva e il cestino dell’account non veniva svuotato. La versione 0.4 di `forget` distingue `trash` da `permanent` e cerca anche le copie storiche del backup; non esplora automaticamente revisioni native o elementi già nel cestino.
 
-Il montaggio in sola lettura, quando verrà aggiunto, impedirà modifiche attraverso quel montaggio. Non cambierà i permessi OAuth usati dai comandi di backup. Passare allo scope completo `drive` autorizzerebbe l'accesso a tutti i file di Drive: impostare MacBackup come cartella radice di rclone non limiterebbe il token Google a quella cartella.
+Il montaggio in sola lettura impedisce modifiche attraverso quel montaggio. Non cambierà i permessi OAuth usati dai comandi di backup. Passare allo scope completo `drive` autorizzerebbe l'accesso a tutti i file di Drive: impostare MacBackup come cartella radice di rclone non limiterebbe il token Google a quella cartella.
 
 Riferimenti: [scope di rclone](https://rclone.org/drive/#scopes), [cestino e cancellazione Google Drive](https://developers.google.com/workspace/drive/api/guides/delete), [metadati isAppAuthorized](https://developers.google.com/workspace/drive/api/reference/rest/v3/files).
 
@@ -231,7 +232,7 @@ I file versionabili sono:
 ```text
 /Users/kevinmuka/.dotfiles/home/.zsh/completions/_macbackup
 /Users/kevinmuka/.dotfiles/home/.zsh/integrations/macbackup.zsh
-/Users/kevinmuka/.dotfiles/tests/test_macbackup_completion.py
+/Users/kevinmuka/.dotfiles/tests/macbackup/test_macbackup_completion.py
 ```
 
 L'integrazione aggiunge la directory di completamento a fpath prima di compinit. Se viene ricaricata dopo compinit, registra direttamente il comando tramite compdef. Non richiede modifiche a `.zshrc`, che carica già i file di integrazione. Le definizioni devono essere mantenute coerenti con il parser quando si aggiungeranno nuovi comandi o opzioni.
@@ -293,7 +294,7 @@ L'autocompletamento aggiunge due file nel sistema di integrazioni Zsh già previ
 
 ## 3. Configurazione: quattro elenchi e un file di impostazioni
 
-Tre file descrivono percorsi assoluti da includere o escludere. Il quarto, `explicit-only-patterns.txt`, descrive nomi di file e directory che richiedono un'inclusione esatta e non possono entrare nel backup solo perché si è inclusa una directory superiore. `settings.toml` contiene destinazioni, limite di cancellazioni e nomi di directory da cifrare automaticamente.
+Tre file descrivono percorsi assoluti da includere o escludere. Il quarto, `explicit-only-patterns.txt`, descrive nomi di file e directory che richiedono un'inclusione esatta e non possono entrare nel backup solo perché si è inclusa una directory superiore. `settings.toml` contiene destinazioni, limite di cancellazioni, nomi di directory da cifrare automaticamente e l'opzione `.gitignore`.
 
 ```text
 /Users/kevinmuka/.config/macbackup/
@@ -324,17 +325,26 @@ Le regole sono letterali: un percorso che contiene `[` o `*` nel nome non deve d
 ### 3.2 Precedenza
 
 1. Un'esclusione assoluta prevale su tutto: il percorso non viene salvato, nemmeno se elencato direttamente in plain o private.
-2. Un file con un nome in `[policy].ignored_file_names` viene saltato ovunque, anche se incluso esattamente. La regola riguarda i file, non una directory con lo stesso nome.
-3. Se il nome di un file o di una directory corrisponde a explicit-only, l'elemento non viene salvato a meno che il suo percorso completo compaia direttamente in `plain-paths.txt` o `private-paths.txt`. Elencare soltanto una directory superiore non soddisfa questo requisito, neppure nell'area privata. Una directory saltata non viene attraversata. Eccezione deliberata: una directory che corrisponde anche a `private_directory_names` viene attraversata e cifrata automaticamente; altre protezioni al suo interno continuano a valere.
-4. Superati i due controlli, un'inclusione privata o la corrispondenza con `private_directory_names` viene salvata cifrata. L'appartenenza a una directory privata mantiene privata la copia: un'inclusione esatta in plain non la rende consultabile.
-5. Un'inclusione normale non privata viene salvata nell'area `plain`.
-6. Un percorso non selezionato non viene salvato.
+2. Un file con un nome in `[policy].ignored_file_names` viene saltato se è incluso soltanto tramite una directory superiore. Un'inclusione esatta del file in plain o private lo autorizza; la regola riguarda i file, non una directory con lo stesso nome.
+3. Se il nome di un file o di una directory corrisponde a explicit-only, l'elemento non viene salvato a meno che il suo percorso completo compaia direttamente in `plain-paths.txt` o `private-paths.txt`. Elencare soltanto una directory superiore non soddisfa questo requisito, neppure nell'area privata. Una directory saltata non viene attraversata. Eccezione deliberata: una directory che corrisponde anche a `private_directory_names` viene attraversata e cifrata automaticamente, salvo inclusione esatta in plain; altre protezioni al suo interno continuano a valere.
+4. Se `use_gitignore = true`, le regole `.gitignore` possono escludere i percorsi selezionati soltanto tramite una directory superiore. Un'inclusione esatta del percorso e la cifratura automatica tramite `private_directory_names` prevalgono. Una directory ignorata non viene attraversata.
+5. Superati questi controlli, un'inclusione privata vince su plain. Una directory che corrisponde a `private_directory_names` e i suoi discendenti vengono cifrati, salvo che quella directory sia stata inclusa **esattamente** in `plain-paths.txt` e non sia coperta da `private-paths.txt`. Una sola inclusione della directory superiore non disattiva la cifratura automatica.
+6. Un'inclusione normale non privata viene salvata nell'area `plain`.
+7. Un percorso non selezionato non viene salvato.
 
-Non si consente di reincludere un discendente di una directory esclusa. Non si consente di rendere normale un discendente di una directory privata. Queste scelte mantengono prevedibili le regole indipendentemente dall'ordine delle righe.
+Le policy per nome danno il comportamento predefinito; un'inclusione **esatta** può autorizzare un file ignorato o rendere plain una directory cifrata automaticamente per nome. `private-paths.txt` prevale su `plain-paths.txt` per lo stesso percorso, mentre `exclude-paths.txt` prevale su entrambi. Includere soltanto la directory superiore non crea eccezioni esatte per i suoi discendenti.
+
+Non si consente di reincludere un discendente di una directory esclusa. Dentro una directory cifrata per inclusione in `private-paths.txt`, plain non può prevalere; l'eccezione plain riguarda soltanto la cifratura automatica per nome e richiede l'inclusione esatta della directory. Queste scelte mantengono prevedibili le regole indipendentemente dall'ordine delle righe.
+
+Con `private_directory_names = [".git"]`, una directory `.git` sotto una sorgente selezionata viene cifrata anche se `.git` compare in `explicit-only-patterns.txt`: questa è l'eccezione esplicita al blocco per nome. Se aggiungi `/Users/kevinmuka/Desktop/project/.git` direttamente a `plain-paths.txt`, la directory e i file ammessi al suo interno diventano plain. Se lo stesso percorso è anche in `private-paths.txt`, resta cifrato. Un `.env` al suo interno rimane soggetto alla propria regola explicit-only. La regola automatica riguarda le **directory** chiamate `.git`, non un file ordinario con quel nome; un'esclusione assoluta continua a prevalere. Cambiare una `.git` da private a plain sposta la vecchia copia da `private/current` a `private/history` e carica la nuova in `plain/current`: per rimuovere anche la vecchia copia cifrata serve `forget --area private`.
 
 Un percorso indica se stesso e i propri discendenti, non nomi simili: `/a/karabiner/` non comprende `/a/karabiner-old/`.
 
-Per ignorare altri nomi di file in tutta la selezione, aggiungerli come stringhe letterali a `ignored_file_names` in `settings.toml`, per esempio `ignored_file_names = [".DS_Store", "Thumbs.db"]`. Il confronto non distingue maiuscole e minuscole; non sono ammessi percorsi o wildcard. Gli spazi dentro le stringhe TOML sono significativi: `" ← "` indica esattamente un nome con uno spazio prima e uno dopo la freccia. La configurazione attiva ignora `.DS_Store`, ` ← ` e `.localized`. Una nuova regola blocca i caricamenti futuri, ma lascia intatte le copie già presenti in `current` e `history`, che si possono rimuovere con `forget`. La regola non cancella file locali.
+Per ignorare altri nomi di file in tutta la selezione, aggiungerli come stringhe letterali a `ignored_file_names` in `settings.toml`, per esempio `ignored_file_names = [".DS_Store", "Thumbs.db"]`. Il confronto non distingue maiuscole e minuscole; non sono ammessi percorsi o wildcard. Gli spazi dentro le stringhe TOML sono significativi: `" ← "` indica esattamente un nome con uno spazio prima e uno dopo la freccia. La configurazione attiva ignora `.DS_Store`, ` ← ` e `.localized` quando sono inclusi tramite una directory superiore. Per salvarne una specifica copia, aggiungi il percorso assoluto del file a `plain-paths.txt` o `private-paths.txt`; private vince se il percorso compare in entrambi ed exclude prevale sempre. Questa inclusione non autorizza altri file con lo stesso nome. Una nuova regola archivia nella prossima `run` le copie non più ammesse presenti in `current`, lasciandole in `history`; per rimuoverle da tutte le versioni si usa `forget`. La regola non cancella file locali.
+
+`use_gitignore = true` usa Git per leggere i file `.gitignore` lungo i percorsi inclusi, anche in directory che non sono repository Git. Sono supportati i pattern e le negazioni di Git; non vengono consultati l'indice, `.git/info/exclude` e i file globali di esclusione. La ricerca parte dalla radice del filesystem, quindi può applicare anche `.gitignore` in directory antenate della sorgente selezionata. I collegamenti simbolici non vengono attraversati. Il file `.gitignore` stesso resta selezionabile come gli altri file, a meno che una regola non lo escluda. Serve Git nel `PATH`; se il controllo fallisce, la selezione si ferma.
+
+L'opzione iniziale e quella attiva sono `false`. Prima di passare a `true`, confrontare `macbackup preview --local` con il risultato precedente: i file ignorati verranno omessi anche se la directory che li contiene è in `plain-paths.txt` o `private-paths.txt`. Un file elencato direttamente in `plain-paths.txt` o `private-paths.txt` resta incluso anche se il suo nome o una directory antenata è ignorata da `.gitignore`; `private` mantiene la precedenza su `plain`. Un'inclusione esatta di una directory non disattiva le regole per i suoi discendenti. Le cartelle `.git` cifrate automaticamente tramite `private_directory_names` restano incluse. L'aggiunta di un `.gitignore` o l'attivazione dell'opzione fa archiviare nella prossima `run` le vecchie copie non più selezionate da `current` allo storico della stessa area. Non le elimina; per rimuoverle da tutte le versioni si usa `forget`.
 
 ### 3.2.1 Nomi ammessi soltanto tramite inclusione esatta
 
@@ -366,7 +376,7 @@ L'autorizzazione è soltanto per il percorso scritto: elencare esattamente `prog
 
 Questa regola deve essere attiva sia nel calcolo dell'anteprima sia nell'esecuzione dei trasferimenti, non soltanto nel controllo preliminare. Un nuovo `.env` creato dentro una cartella durante la run non deve passare attraverso una semplice inclusione ricorsiva della directory.
 
-Rimuovere il percorso esatto dall'elenco, oppure aggiungere un nuovo pattern di protezione, interrompe i caricamenti futuri ma conserva le copie già presenti in current e history. Per rimuoverle resta necessario `forget`. `preview --local` mostra i nomi bloccati; `versions` e `forget` permettono di trovare le copie cloud precedenti. `run` e `status` non producono ancora un avviso automatico che collega queste due informazioni.
+Rimuovere il percorso esatto dall'elenco, oppure aggiungere un nuovo pattern di protezione, fa archiviare nella prossima `run` la copia già presente in `current`. Le versioni in `history` restano conservate; per rimuoverle resta necessario `forget`. `preview --local` mostra i nomi bloccati; `versions` e `forget` permettono di trovare le copie cloud precedenti. `preview --target` e `status` distinguono le archiviazioni dovute alla policy dalle cancellazioni locali e registrano la regola attuale che ha causato la nuova esclusione. Non possono ricostruire la regola storica che aveva originariamente incluso il file.
 
 Questa protezione si applica ai caricamenti di macbackup sui cloud. Non configura Git, non crea regole `.gitignore` e non impedisce un push Git effettuato con altri strumenti. Non riconosce un segreto copiato dentro un file con altro nome o un archivio. Le directory `.git` selezionate sono ora cifrate automaticamente; ciò non elimina eventuali copie precedenti in chiaro, che si possono cercare e rimuovere con `versions` e `forget`.
 
@@ -407,11 +417,11 @@ Questi percorsi sono stati inseriti nella configurazione locale. Google è ora a
 /Users/kevinmuka/.config/joplin-desktop/
 ```
 
-`explicit-only-patterns.txt` contiene `.env`, `.env.*`, `node_modules`, `.venv`, `venv` e `myenv`. Nessun `.env` è stato autorizzato singolarmente: includere Desktop, Documents o .config non basta a caricarlo. Le quattro voci aggiunte fermano file o directory con questi nomi in tutta la selezione; le directory non vengono attraversate. Le 42 esclusioni assolute temporanee usate per la revisione sono state rimosse da `exclude-paths.txt`, che conserva soltanto le cinque esclusioni `.config` elencate sopra. La classificazione della directory protetta vale anche quando macbackup incontra una vecchia copia già presente nel cloud: interrompe gli aggiornamenti senza archiviarla come cancellazione. Lo storico esistente resta conservato finché non viene eseguita una rimozione esplicita.
+`explicit-only-patterns.txt` contiene `.env`, `.env.*`, `node_modules`, `.venv`, `venv` e `myenv`. Nessun `.env` è stato autorizzato singolarmente: includere Desktop, Documents o .config non basta a caricarlo. Le quattro voci aggiunte fermano file o directory con questi nomi in tutta la selezione; le directory non vengono attraversate. Le 42 esclusioni assolute temporanee usate per la revisione sono state rimosse da `exclude-paths.txt`, che conserva soltanto le cinque esclusioni `.config` elencate sopra. La classificazione della directory protetta vale anche quando macbackup incontra una vecchia copia già presente nel cloud: nella versione attuale la copia viene archiviata per cambio di policy, senza essere cancellata. Lo storico esistente resta conservato finché non viene eseguito `forget`.
 
-Il 1 novembre l'utente ha scelto di cifrare tutte le directory `.git`. Nella configurazione attiva `settings.toml` contiene `[policy] private_directory_names = [".git"]`: ogni directory con questo nome, presente o futura, e i suoi discendenti entrano nell'area cifrata se si trovano sotto un percorso incluso. La voce `.git` resta anche in `explicit-only-patterns.txt`: se la regola di cifratura per nome viene rimossa, torna a essere richiesta un'inclusione esatta. Sono state rilevate 68 directory `.git` per circa 0,72 GiB. I file di lavoro dei progetti restano consultabili; `.env` e gli altri nomi protetti dentro `.git` richiedono comunque l'inclusione esatta. Un'esclusione assoluta continua a prevalere. La nuova classificazione non cancella eventuali vecchie copie `.git` in chiaro, incluse quelle nello storico.
+Il 1 novembre l'utente ha scelto di cifrare tutte le directory `.git`. Nella configurazione attiva `settings.toml` contiene `[policy] private_directory_names = [".git"]`: ogni directory con questo nome, presente o futura, e i suoi discendenti entrano nell'area cifrata se si trovano sotto un percorso incluso, salvo una sua inclusione esatta in plain senza copertura private. La voce `.git` resta anche in `explicit-only-patterns.txt`: se la regola di cifratura per nome viene rimossa, torna a essere richiesta un'inclusione esatta. Sono state rilevate 68 directory `.git` per circa 0,72 GiB. I file di lavoro dei progetti restano consultabili; `.env` e gli altri nomi protetti dentro `.git` richiedono comunque l'inclusione esatta. Un'esclusione assoluta continua a prevalere. La nuova classificazione non cancella eventuali vecchie copie `.git` in chiaro, incluse quelle nello storico.
 
-Se `Desktop/progetto` è in plain, un file di lavoro come `README.md` va in `plain/current/Users/kevinmuka/Desktop/progetto/README.md`, mentre un oggetto Git va in `private/current/Users/kevinmuka/Desktop/progetto/.git/objects/...` attraverso rclone crypt. Nel sito Drive, la directory consultabile del progetto non contiene `.git`; nell'area privata nomi e contenuti sono cifrati. Il percorso originale viene conservato in entrambe le aree, così i due alberi si possono ricomporre durante un recupero. La versione attuale di `restore` recupera un file alla volta: la ricomposizione automatica di un intero progetto non è ancora implementata.
+Se `Desktop/progetto` è in plain, un file di lavoro come `README.md` va in `plain/current/Users/kevinmuka/Desktop/progetto/README.md`, mentre un oggetto Git va in `private/current/Users/kevinmuka/Desktop/progetto/.git/objects/...` attraverso rclone crypt. Nel sito Drive, la directory consultabile del progetto non contiene `.git`; nell'area privata nomi e contenuti sono cifrati. Il percorso originale viene conservato in entrambe le aree: il montaggio `--area all` le mostra nello stesso albero `current/`, mentre il ripristino automatico di interi alberi rimane da implementare. La versione attuale di `restore` recupera un file alla volta: la ricomposizione automatica di un intero progetto non è ancora implementata.
 
 Karabiner è incluso: l'esclusione discussa inizialmente era soltanto un esempio. `.config/karabiner` è un collegamento; il contenuto reale viene salvato attraverso `.dotfiles/home/.config/karabiner`, incluso nel repository selezionato. Gli altri collegamenti .zsh vengono conservati come collegamenti e i loro contenuti nei dotfiles sono coperti separatamente. Un'esclusione di una posizione non esclude automaticamente una copia indipendente situata altrove.
 
@@ -419,7 +429,7 @@ La prima scansione dei soli nomi e metadati aveva contato circa 182,5 GB decimal
 
 La nuova scansione completa con il selettore 0.3 è riuscita senza errori. Il conteggio durante il collaudo includeva anche alcuni piccoli file sintetici nell'area di lavoro sotto Documents: i numeri sono una fotografia di quel momento, non un inventario immutabile. Gli avvisi sui collegamenti e sui socket esclusi rimangono distinti dagli errori.
 
-Dopo il passaggio a Production dichiarato dall'utente e la riconnessione, il controllo remoto Google è riuscito. L'anteprima Google del 30 ottobre con le sei regole explicit-only ha completato senza errori: 61.664 file ordinari, 6 privati e 50 icone selezionati, nessuna archiviazione per cancellazione prevista. Era un dry-run: non ha caricato né cancellato file. Una correzione successiva ha esteso la classificazione delle directory protette anche alle vecchie copie cloud; la prova sintetica locale ha confermato che queste copie rimangono in current. Il target Google reale resta disabilitato in `settings.toml` e non è stata eseguita una run di dati personali.
+Dopo il passaggio a Production dichiarato dall'utente e la riconnessione, il controllo remoto Google è riuscito. L'anteprima Google del 30 ottobre con le sei regole explicit-only ha completato senza errori: 61.664 file ordinari, 6 privati e 50 icone selezionati, nessuna archiviazione per cancellazione prevista. Era un dry-run: non ha caricato né cancellato file. Una correzione successiva aveva esteso la classificazione delle directory protette anche alle vecchie copie cloud; all'epoca la prova sintetica locale confermava che queste copie rimanevano in `current`. Questa è una fotografia della versione precedente: ora un cambio di policy le sposta in `history`. Il target Google reale era ancora disabilitato in `settings.toml` in quella fase e non era stata eseguita una run di dati personali.
 
 L'anteprima del 1 novembre con `.git` temporaneamente esclusa aveva contato 35.526 file ordinari, 6 privati e 50 icone, zero archiviazioni per cancellazione, circa 173,7 GB locali. Era un dry-run. Dopo l'attivazione della regola cifrata, la scansione locale ha contato 35.576 elementi plain, 26.154 privati, 50 icone e circa 174,4 GB selezionati. La successiva anteprima Google ha previsto 35.526 file plain, 26.154 privati e 50 icone, senza archiviazioni per cancellazione. La differenza di 50 nel conteggio plain è dovuta alle icone Finder, contate separatamente nell'anteprima. Anche questa era un'anteprima; in seguito Google è stato abilitato e il primo trasferimento reale è stato interrotto su richiesta dell’utente dopo alcuni file. Non è un backup completo.
 
@@ -471,17 +481,19 @@ Conservare fuori dal Mac i parametri necessari a ricreare il remote crypt, inclu
 |---|---|
 | Nuovo file selezionato e ammesso dalle protezioni | Caricato nell'area assegnata, sotto `current` |
 | Nuovo `.env` incluso soltanto tramite una directory | Saltato, con motivazione explicit-only |
-| Percorso esatto di un file protetto tolto dagli elenchi | Copie già caricate mantenute senza aggiornamenti |
+| Percorso esatto di un file protetto tolto dagli elenchi | Copia in `current` archiviata nella stessa area alla prossima run; storici conservati |
 | File modificato | Copia precedente nello storico; nuova copia in `current` |
 | File cancellato dentro una directory selezionata e disponibile | Copia precedente spostata nello storico |
-| Percorso aggiunto alle esclusioni | Copie già caricate mantenute senza aggiornamenti |
-| Percorso tolto dagli elenchi | Copie già caricate mantenute senza aggiornamenti |
-| Percorso passato da normale a privato | Nuovi backup cifrati; vecchie copie normali mantenute e segnalate |
-| Percorso passato da privato a normale | Avviso esplicito prima di caricarlo consultabile |
+| Percorso aggiunto alle esclusioni | Copia in `current` archiviata nella stessa area; storici conservati |
+| Percorso tolto dagli elenchi | Copia in `current` archiviata nella stessa area; storici conservati |
+| Percorso passato da normale a privato | Vecchia copia plain archiviata in `plain/history`; nuova copia cifrata in `private/current` |
+| Percorso passato da privato a normale | Vecchia copia private archiviata in `private/history`; nuova copia consultabile in `plain/current` |
 | Sorgente esplicitamente inclusa mancante o illeggibile | Operazione interessata bloccata; nessuna interpretazione come directory vuota |
 | Spazio remoto insufficiente | Errore; nessuna pulizia automatica dello storico |
 
-`current` significa ultima copia dei percorsi ancora gestiti, con eventuali vecchie copie rimaste ferme dopo un'esclusione. Non è necessariamente uno specchio esatto dell'attuale selezione. `status` e l'anteprima devono rendere visibili queste situazioni.
+Dopo una `run` riuscita, `current` contiene i percorsi selezionati dalla policy attuale. Le copie non più selezionate vengono spostate in `history` nella stessa area, senza cancellarle. Una run interrotta o fallita può lasciare uno stato parziale; `status` mostra le archiviazioni riuscite e quelle ancora previste.
+
+Se entrambi gli elenchi di inclusione vengono svuotati, una `run` può ancora archiviare le copie già presenti in `current`, sempre entro `max_delete`. Se non esiste neppure una copia corrente da archiviare, l'operazione remota si ferma senza fare nulla.
 
 La sparizione di una sorgente esplicitamente elencata è ambigua e blocca il backup: potrebbe essere un disco scollegato o una cancellazione intenzionale. La cancellazione di un file figlio dentro una directory selezionata e correttamente disponibile è invece una normale cancellazione da archiviare.
 
@@ -503,6 +515,7 @@ Sono sottocomandi di macbackup, non di rclone. Il ripristino generale di un albe
 | `layout [PATH]` | Mostra le parti private dentro una directory plain; senza PATH usa la directory corrente |
 | `preview --local` / `preview --target` | Mostra la selezione locale o simula il trasferimento remoto senza modifiche |
 | `run --target` | Trasferisce nelle aree abilitate, conserva versioni e mostra l'avanzamento |
+| `mount --target` | Monta plain, private o entrambe in sola lettura su macOS; Ctrl-C o espulsione dal Finder smonta |
 | `status` | Legge il resoconto locale dell'ultima run, anche interrotta |
 | `restore-icon` | Ricrea localmente un'icona Finder da uno snapshot già scaricato |
 | `versions PATH` | Elenca le copie di un file o riepiloga quelle sotto una directory |
@@ -539,7 +552,7 @@ macbackup preview --local --json
 
 La modalità disponibile mostra i percorsi e la loro classificazione locale, i motivi di esclusione e gli avvisi. Le inclusioni esatte di nomi protetti nell'area normale sono evidenziate. Un file bloccato da explicit-only riporta anche il pattern responsabile nel risultato JSON e nella spiegazione individuale.
 
-La modalità disponibile `preview --target google` esegue il dry-run remoto e riporta per destinazione e area file selezionati e archiviazioni dovute a cancellazioni. La presentazione completa delle singole differenze e delle vecchie copie diventate non gestite resta da completare.
+La modalità `preview --target google` esegue il dry-run remoto e riporta per destinazione e area i file selezionati, le archiviazioni dovute a cancellazioni locali e quelle dovute alla policy. Per queste ultime mostra percorso, nuova classificazione, motivo e regola attuale, se disponibile. Non modifica il cloud. Se il totale supera `max_delete`, l'anteprima lo segnala; una `run` con la stessa selezione si fermerà prima dei trasferimenti.
 
 La modalità locale non accede al cloud e non scrive un resoconto: stampa il risultato. La versione futura potrà salvare un resoconto locale protetto. Dimensioni e durata del trasferimento, quando stimate, dovranno essere indicate come stime.
 
@@ -566,21 +579,40 @@ Il programma ricontrolla la configurazione, acquisisce un blocco contro esecuzio
 
 `run --json` esegue lo stesso backup reale e cambia soltanto il riepilogo finale su stdout. L'avanzamento resta sul terminale tramite stderr. Senza `--json`, il riepilogo finale distingue i selezionati dai trasferiti e dai controllati; `status` conserva gli stessi conteggi per ogni fase conclusa o interrotta.
 
-Prima di una quantità anomala di rimozioni da `current`, il programma si ferma. La soglia è max_delete in settings.toml, inizialmente 25 per area e destinazione; va rivista prima di abilitare l'automazione.
+Prima di una quantità anomala di spostamenti da `current` a `history`, il programma si ferma. La soglia è `max_delete` in `settings.toml`, inizialmente 25 per area e destinazione, e comprende sia le cancellazioni locali sia i cambi di policy. L'anteprima remota segnala il superamento della soglia senza modificare nulla; una run con lo stesso piano si ferma prima dei trasferimenti.
 
 L'esito è separato per Google/Proton e plain/private. Una destinazione può riuscire mentre l'altra fallisce: il riepilogo e il codice di uscita devono indicare il risultato parziale. Un successo richiede il completamento di tutte le operazioni richieste.
 
 La singola esecuzione non garantisce la stessa fotografia temporale sui due servizi: se i file locali cambiano tra le letture, le copie possono riferirsi a istanti diversi. Il backup non va presentato come snapshot simultaneo.
 
-### 6.4 `status`: conoscere l'esito memorizzato
+### 6.4 `mount`: consultare le copie in sola lettura
+
+```sh
+macbackup mount --target google                 # equivalente a --area all: un volume google
+macbackup mount --target google --area all      # current/ unificato, storici separati per area
+macbackup mount --target google --area plain    # solo google-plain
+macbackup mount --target google --area private  # solo google-private
+```
+
+Il comando usa i percorsi `plain` e `private` di `settings.toml`. La sintassi è `--area all`, non `--all`: `--area` sceglie quali aree mostrare, mentre `--target` sceglie il servizio. Con `--area all` (il valore predefinito) crea direttamente sul Desktop un solo volume `google`. `current/` mostra i file normali e quelli privati nello stesso albero dei percorsi originali; una `.git` privata appare così accanto ai file normali del suo progetto. `history/plain/` e `history/private/` rimangono separati, perché una versione precedente potrebbe esistere in entrambe le aree. Gli snapshot delle icone Finder restano consultabili sotto `icons/plain/` e `icons/private/`. Questa è solo una vista in lettura: i percorsi cloud, la classificazione e la cifratura non cambiano. Rclone crea la vista con `union` per `current` e `combine` per gli altri rami, usando remotes temporanei solo nel processo di montaggio. Con `--area plain` o `--area private` monta invece il solo volume `google-plain` o `google-private`. `--mountpoint /percorso/assoluto` cambia la cartella **base** e conserva questi nomi al suo interno. È previsto anche `--target proton` quando quel servizio sarà configurato e abilitato; `--target all` richiede entrambi i servizi abilitati e monta un volume per servizio.
+
+Prima di montare `--area all`, macbackup legge gli inventari di `plain/current` e `private/current`. Le directory condivise sono normali; se lo stesso percorso è un file in entrambe le aree, o è un file in una e una directory nell’altra, il montaggio viene bloccato con i percorsi in conflitto. Non viene scelta silenziosamente una copia. Durante le due letture degli inventari e l’avvio del volume, il terminale mostra una barra ASCII animata con il tempo trascorso; per gli inventari indica anche i MiB di metadati ricevuti. Anche durante queste fasi, i tasti ordinari vengono scartati senza comparire nel terminale e `Ctrl-C` interrompe l'operazione. La barra è intenzionalmente senza percentuale, perché la dimensione totale e la durata della scansione non sono note in anticipo. Nei terminali che supportano il colore, fasi, barre ed esiti sono evidenziati; `NO_COLOR=1` o `PYTHON_COLORS=0` li disattivano. Quando l’output è reindirizzato, i codici colore non vengono emessi. Senza terminale interattivo stampa soltanto l’inizio e la fine di ogni fase. `Ctrl-C` durante la scansione interrompe il processo rclone avviato per l’inventario. La scansione iniziale può richiedere tempo su backup grandi. Per ispezionare comunque le copie si possono montare separatamente `--area plain` e `--area private`.
+
+Su macOS usa `rclone nfsmount` con `--read-only`, senza richiedere macFUSE. Lascia aperto il terminale del comando: mentre il volume è montato, i tasti digitati non vengono mostrati né eseguiti; `Ctrl-C` smonta il volume. Puoi anche selezionarlo nel Finder e premere `⌘E`. In entrambi i casi macbackup conferma con `Volume smontato: <percorso>` quando il volume non risulta più montato, ripristina l'input del terminale e rimuove i punti di montaggio vuoti creati da questa esecuzione. Un arresto anomalo di rclone resta invece un errore. Una cartella vuota preesistente viene conservata. I montaggi predefiniti sul Desktop sono esclusi automaticamente da `macbackup run`, anche se il Desktop è incluso. Ciascun punto deve essere vuoto e non può attraversare collegamenti simbolici; un `--mountpoint` alternativo non può sovrapporsi a una sorgente del backup. Il comando non esegue un backup e non applica gli elenchi di selezione ai file copiati manualmente. I tentativi di scrittura attraverso il montaggio sono bloccati da rclone; con NFS alcune applicazioni potrebbero non mostrare un errore evidente, quindi non usare il montaggio come cartella di lavoro. I file `.rclonelink` restano rappresentazioni dei collegamenti e gli snapshot delle icone Finder restano JSON; per ricrearli usare i comandi di ripristino.
+
+Questa funzione è distinta dal trasferimento: il token Google mantiene i permessi OAuth già concessi per il backup. Il flag `--read-only` riguarda l'accesso attraverso questo montaggio. Riferimento: [documentazione ufficiale rclone nfsmount](https://rclone.org/commands/rclone_nfsmount/) e [combine](https://rclone.org/combine/) e [union](https://rclone.org/union/).
+
+### 6.5 `status`: conoscere l'esito memorizzato
+
+L'output è sempre JSON. La flag `--json` è accettata per compatibilità e non cambia il formato.
 
 ```sh
 macbackup status
 ```
 
-Mostra il resoconto dell'ultima run, con gli esiti per destinazione e area richieste in quella run. Per ogni fase distingue `selected` (elementi previsti), `transferred_files` (trasferimenti completati secondo rclone), `transferred_bytes` (byte contabilizzati da rclone nella fase), `checked_files` (verifiche di rclone) e `listed_items` (file e cartelle incontrati durante l'esplorazione, non il totale già presente nel cloud). `renamed_files`, `server_side_moves` e `server_side_move_bytes` riportano gli spostamenti fatti sul cloud: con `--backup-dir` includono le copie precedenti spostate nello storico. Non si sommano ai file caricati dal Mac. `counts_complete: true` indica statistiche finali ricevute dopo una fase riuscita. Dopo Ctrl+C, se rclone ha già emesso statistiche periodiche, mostra l'ultimo conteggio con `counts_complete: false`: può essere inferiore ai file effettivamente completati prima del segnale, e i byte possono includere parte del file interrotto. Se non è arrivato nessun rapporto, i valori sono `null` anziché zero. La versione 0.9.1 mostrava i progressi nel terminale ma non catturava i rapporti periodici durante Ctrl+C: i suoi `null` non si possono ricostruire dallo stato locale. Dalla 0.9.2 il riepilogo periodico viene sia mostrato sia registrato come ultima fotografia disponibile. I testi JSON sono stampati in UTF-8 leggibile, senza sequenze `\u2019` per gli apostrofi. La vista storica dell'ultimo successo per ogni destinazione e la data di verifica non sono ancora implementate. Lo stato locale memorizzato non certifica che il cloud sia raggiungibile in quel momento, che tutti gli storici siano integri o che una prova di recupero sia riuscita.
+Mostra il resoconto dell'ultima run, con gli esiti per destinazione e area richieste in quella run. Per ogni fase distingue `selected` (elementi previsti), `transferred_files` (trasferimenti completati secondo rclone), `transferred_bytes` (byte contabilizzati da rclone nella fase), `checked_files` (verifiche di rclone) e `listed_items` (file e cartelle incontrati durante l'esplorazione, non il totale già presente nel cloud). `archive_deleted` conta le copie da archiviare per cancellazione locale; `archive_policy` conta quelle da archiviare per cambio di policy. `policy_archives` descrive ciascuno spostamento previsto con percorso, area originaria, nuova classificazione, motivo e regola attuale; `policy_archived` elenca gli spostamenti riusciti, con il percorso in `history`. In una run parziale i due elenchi possono avere lunghezze diverse. `renamed_files`, `server_side_moves` e `server_side_move_bytes` riportano gli spostamenti rilevati da rclone nella fase di sincronizzazione: con `--backup-dir` includono le copie precedenti spostate nello storico, ma non gli spostamenti per policy eseguiti successivamente con `moveto`. Non si sommano ai file caricati dal Mac. `counts_complete: true` indica statistiche finali ricevute dopo una fase riuscita. Dopo Ctrl+C, se rclone ha già emesso statistiche periodiche, mostra l'ultimo conteggio con `counts_complete: false`: può essere inferiore ai file effettivamente completati prima del segnale, e i byte possono includere parte del file interrotto. Se non è arrivato nessun rapporto, i valori sono `null` anziché zero. La versione 0.9.1 mostrava i progressi nel terminale ma non catturava i rapporti periodici durante Ctrl+C: i suoi `null` non si possono ricostruire dallo stato locale. Dalla 0.9.2 il riepilogo periodico viene sia mostrato sia registrato come ultima fotografia disponibile. I testi JSON sono stampati in UTF-8 leggibile, senza sequenze `\u2019` per gli apostrofi. La vista storica dell'ultimo successo per ogni destinazione e la data di verifica non sono ancora implementate. Lo stato locale memorizzato non certifica che il cloud sia raggiungibile in quel momento, che tutti gli storici siano integri o che una prova di recupero sia riuscita.
 
-### 6.5 `versions`: trovare le copie di un file o di una directory
+### 6.6 `versions`: trovare le copie di un file o di una directory
 
 ```sh
 macbackup versions "/Users/kevinmuka/Documents/tesi.docx" --target google
@@ -597,7 +629,7 @@ Ogni `history/RUN_ID` contiene **soltanto gli elementi spostati in quella run**,
 
 Le destinazioni possono essere disabilitate in `settings.toml`, purché i rispettivi remote rclone esistano. Il comando non richiede lo stato locale di vecchie run: ricostruisce l'elenco dal cloud. `--json` restituisce anche il percorso remoto esatto per ciascuna copia e conserva i dettagli degli elementi `current`. Dalla versione 0.9.5 `versions` usa una ricerca in sola lettura propria: cerca il percorso richiesto in `current`, elenca gli ID delle run in `history` e cerca lo stesso percorso dentro ciascuna run. Per un singolo file cerca nella sua directory superiore. Non calcola hash né ID originali; `forget` continua a fare il proprio inventario e le proprie verifiche prima di qualsiasi rimozione. La ricerca circoscritta dovrebbe essere più rapida soprattutto per percorsi piccoli e poche run; con molte run può comportare più richieste separate. Non è stata misurata sul Drive reale.
 
-### 6.6 `restore`: recuperare un singolo file
+### 6.7 `restore`: recuperare un singolo file
 
 Dopo aver letto l'identificativo con `versions`, si sceglie esplicitamente una destinazione locale:
 
@@ -625,7 +657,7 @@ Il collaudo isolato del 1 novembre ha trovato due versioni sintetiche su Google:
 
 **Limite dello storico:** ogni directory `history/RUN_ID` contiene soltanto i file archiviati in quel tentativo. Il programma non promette il ripristino di un intero albero a una data arbitraria. Per offrirlo servono inventari completi e una ricostruzione collaudata, oppure uno strumento basato su snapshot.
 
-### 6.7 `verify`: confrontare la selezione locale con `current`
+### 6.8 `verify`: confrontare la selezione locale con `current`
 
 ```sh
 macbackup verify --target google
@@ -638,7 +670,7 @@ Il risultato separa file corrispondenti, diversi, mancanti e errori di lettura p
 
 Nel collaudo isolato su Google del 1 novembre, `verify` ha trovato corrispondenti un file normale e uno cifrato sia con il metodo ordinario sia con `--download`. Una modifica locale fittizia che conservava dimensione e orario è stata segnalata come differenza. I due file e i namespace di prova sono stati rimossi e verificati assenti; i file personali non sono stati toccati.
 
-### 6.8 `forget`: rimuovere copie conservate
+### 6.9 `forget`: rimuovere copie conservate
 
 `forget` usa due passaggi. Il primo legge il cloud e crea soltanto un piano; il secondo applica quel piano dopo una nuova verifica. Area, destinazione e modalità sono sempre esplicite. Per un file si indica il percorso originale esatto; per una directory si aggiunge `/` finale, anche se la directory locale non esiste più:
 
@@ -656,9 +688,9 @@ macbackup forget "/Users/kevinmuka/Desktop/progetto/segreto.txt" \
 
 Questo esempio non applica ancora la rimozione: soltanto il successivo `forget --plan ID --apply` usa il piano. `--area private` cerca invece la copia cifrata; `--area all` cerca entrambe.
 
-Il piano elenca ogni file corrispondente in `current` e in tutte le directory sotto `history`, con area, servizio, posizione, numero e byte noti. Per una directory comprende anche gli snapshot `macos-icons` della cartella e dei discendenti. Il confronto usa i confini dei percorsi: `old-project/` non comprende `old-project-other/`. La ricerca non applica le regole di selezione correnti, così trova anche copie caricate prima di una nuova esclusione o classificazione privata. Le destinazioni possono essere disabilitate in `settings.toml`, purché i relativi remote rclone siano configurati. Un piano di oltre 10.000 file viene rifiutato: restringere il percorso e creare più piani.
+Il piano elenca ogni file corrispondente in `current` e in tutte le directory sotto `history`, con area, servizio, posizione, numero e byte noti. Per una directory comprende anche gli snapshot `macos-icons` della cartella e dei discendenti e le radici di directory esistenti da ripulire. Il confronto usa i confini dei percorsi: `old-project/` non comprende `old-project-other/`. La ricerca non applica le regole di selezione correnti, così trova anche copie caricate prima di una nuova esclusione o classificazione privata. Le destinazioni possono essere disabilitate in `settings.toml`, purché i relativi remote rclone siano configurati. Un piano di oltre 10.000 file viene rifiutato: restringere il percorso e creare più piani.
 
-Se non ci sono corrispondenze non viene creato un piano. Altrimenti macbackup genera un ID casuale e salva il piano in un file locale con permessi 600, sotto `~/.local/state/macbackup/forget-plans`. Il piano scade dopo un'ora e si usa una sola volta. L'output mostra il comando preciso per applicarlo:
+Se non ci sono file né directory corrispondenti non viene creato un piano. Per una directory rimasta vuota può invece essere creato un piano con zero file. Altrimenti macbackup genera un ID casuale e salva il piano in un file locale con permessi 600, sotto `~/.local/state/macbackup/forget-plans`. Il piano scade dopo un'ora e si usa una sola volta. L'output mostra il comando preciso per applicarlo:
 
 ```sh
 macbackup forget --plan F0123456789ab --apply
@@ -666,11 +698,11 @@ macbackup forget --plan F0123456789ab --apply
 
 Prima dell'applicazione macbackup rilegge gli inventari e confronta l'insieme completo delle corrispondenze, i percorsi remoti, le dimensioni, gli orari, gli ID e gli hash restituiti dal backend. Se una copia cambia o ne appare un'altra, blocca l'intero piano. Alcuni backend non espongono hash del contenuto: modifiche dello stesso file con identica dimensione e identico orario potrebbero non essere rilevate. Per questo il piano scade e non va usato mentre altri client modificano il backup.
 
-L'applicazione rimuove i file uno alla volta, poi rilegge l'inventario. In caso di errore può esserci un risultato parziale, registrato sotto lo stesso ID; si crea un nuovo piano per gli elementi rimasti. Il comando non modifica sorgenti locali né elenchi. Se il percorso è ancora incluso, una successiva `run` potrebbe caricarlo nuovamente: prima si cambia la classificazione e poi si usa `forget`. Le directory vuote possono restare nel cloud dopo la rimozione dei file.
+L'applicazione rimuove i file uno alla volta, poi rilegge l'inventario. Per un percorso di directory rimuove anche le directory rimaste vuote sotto le radici esatte indicate nel piano, sia in `current` sia nelle versioni di `history` trovate; non risale sopra il percorso richiesto. In caso di errore può esserci un risultato parziale, registrato sotto lo stesso ID; si crea un nuovo piano per gli elementi rimasti, anche quando restano soltanto directory vuote. Il comando non modifica sorgenti locali né elenchi. Se il percorso è ancora incluso, una successiva `run` potrebbe caricarlo nuovamente: prima si cambia la classificazione e poi si usa `forget`.
 
 `--area plain` permette per esempio di rimuovere le vecchie copie consultabili dopo aver spostato un file nell'area privata. `--area all` cerca entrambe le aree. `--target all` richiede che siano configurati entrambi i servizi; non assume che una destinazione disabilitata sia assente.
 
-### 6.9 Cestino, rimozione definitiva e revisioni del provider
+### 6.10 Cestino, rimozione definitiva e revisioni del provider
 
 `--mode trash` rimuove le copie individuate dalle cartelle del backup e le manda nel cestino del servizio. Non significa eliminazione definitiva e può non liberare spazio.
 
@@ -710,25 +742,27 @@ Il risultato distingue la rimozione dalle cartelle attive e la modalità richies
 
 Non si devono combinare ingenuamente files-from con filtri di esclusione: rclone ignora gli altri filtri quando viene usato files-from. Gli elenchi dell'utente non devono essere presentati come un formato nativo di rclone.
 
-Explicit-only non è un'opzione nativa di rclone. Il selettore applica le precedenze in Python sia ai file locali sia alle copie sotto current. Il trasporto passa a rclone soltanto un elenco esatto separato da NUL tramite files-from0, senza combinarlo con filtri di esclusione che sarebbero ignorati. L'elenco comprende i file ammessi e le vecchie copie ancora gestite da archiviare; le copie escluse o diventate dell'altra area non vi entrano e rimangono conservate. Un nuovo file apparso dopo la preparazione dell'elenco aspetta la run successiva. Non si passa a rclone un'inclusione ricorsiva della directory che possa aggirare la scelta dei singoli file protetti.
+Explicit-only non è un'opzione nativa di rclone. Il selettore applica le precedenze in Python sia ai file locali sia alle copie sotto `current`. Il trasporto passa a rclone soltanto un elenco esatto separato da NUL tramite `files-from0`, senza combinarlo con filtri di esclusione che sarebbero ignorati. L'elenco comprende i file ammessi e le vecchie copie ancora gestite da archiviare per cancellazione locale; le copie escluse o diventate dell'altra area vengono spostate separatamente nello storico della loro area originaria. Un nuovo file apparso dopo la preparazione dell'elenco aspetta la run successiva. Non si passa a rclone un'inclusione ricorsiva della directory che possa aggirare la scelta dei singoli file protetti.
 
 L'uso dei comandi rclone rimane possibile anche senza il programma, purché si conoscano i remotes e si usi quello crypt per l'area privata. Documentare i nomi effettivi dei remotes dopo la configurazione. Non fornire comandi distruttivi generici da eseguire a memoria.
 
 ## 9. Verifiche già fatte e verifiche necessarie
 
-La suite locale attuale comprende 126 test con dati sintetici e veri comandi rclone su remotes locali e crypt. Copre la selezione e le precedenze, `.env` e gli altri nomi protetti, la cifratura automatica delle directory `.git`, i file ignorati con spazi nel nome, collegamenti simbolici, icone Finder, trasferimenti, storico, piani `forget`, `versions`, `restore` di file e symlink con `--links`, `verify`, il resoconto di run interrotte, i conteggi trasferiti e l'autocompletamento Zsh. La resa delle icone Finder è stata anche provata tramite AppKit.
+La suite locale, organizzata in `tests/macbackup/` con i test del montaggio in `test_macbackup_mount.py`, usa dati sintetici e veri comandi rclone su remotes locali e crypt. Copre la selezione e le precedenze, `.env` e gli altri nomi protetti, la cifratura automatica delle directory `.git`, i file ignorati con spazi nel nome, collegamenti simbolici, icone Finder, trasferimenti, storico, archiviazioni per cambio di policy, piani `forget`, `versions`, `restore` di file e symlink con `--links`, `verify`, il resoconto di run interrotte, i conteggi trasferiti, l'esclusione dei montaggi Desktop e l'autocompletamento Zsh. La resa delle icone Finder è stata anche provata tramite AppKit.
+
+Il comando `mount` è stato provato con remotes locali sintetici, uno normale e uno cifrato: il volume unificato mostrava i file delle due aree nello stesso `current/`, manteneva gli storici separati e `Ctrl-C` lo ha smontato. Anche la nuova vista unificata è stata montata sul Google Drive reale in una directory temporanea: `current/`, `history/plain/` e `history/private/` erano accessibili; il volume è stato poi smontato. È stata verificata anche l’espulsione di un volume NFS locale fittizio tramite macOS: macbackup termina con codice zero e rimuove la cartella che aveva creato. Questa prova non legge né verifica il contenuto di tutti i file del backup.
 
 Su Google Drive sono state eseguite prove isolate con file fittizi: copia plain e crypt, recupero di versioni correnti e storiche, `forget` permanente sulle copie di prova e `verify` ordinario e con download. I namespace di prova autorizzati sono stati rimossi e verificati assenti. Queste prove non equivalgono alla verifica dell'intera copia personale.
 
-Il primo trasferimento dei dati personali su Google è stato interrotto e non ha ancora un esito `ok: true` per tutte le aree. Prima di chiamarlo backup riuscito occorrono una run completa, `macbackup verify --target google` e almeno tre prove di recupero in una directory separata: un file plain, un file private e un symlink con `restore --links`. `verify` confronta la copia corrente con i file locali del momento; eventuali modifiche locali dopo il backup vanno interpretate prima di concludere che la copia cloud è errata.
+Il primo trasferimento dei dati personali su Google fu interrotto; quel resoconto non descrive necessariamente l'esito più recente. Prima di chiamare verificata l’intera copia personale occorrono una `preview --target google`, una run completa avviata dall'utente, `macbackup verify --target google` e prove di recupero in una directory separata: un file plain, un file private e un symlink con `restore --links`. `verify` confronta la copia corrente con i file locali del momento; eventuali modifiche locali dopo il backup vanno interpretate prima di concludere che la copia cloud è errata.
 
-Proton non è ancora configurato né collaudato con l'account dell'utente. La rimozione `forget --mode trash` su Proton, una seconda run senza modifiche, il recupero delle chiavi da un Mac nuovo, il montaggio in sola lettura e l'automazione periodica restano da verificare o implementare come descritto nelle rispettive sezioni. La verifica dell'identità dei mount esterni, il ripristino automatico di un intero albero, le revisioni native e gli elementi già nel cestino dei provider non sono coperti dai comandi attuali.
+Proton non è ancora configurato né collaudato con l'account dell'utente. La rimozione `forget --mode trash` su Proton, una seconda run senza modifiche, il recupero delle chiavi da un Mac nuovo, il montaggio Proton in sola lettura e l'automazione periodica restano da verificare o implementare come descritto nelle rispettive sezioni. La verifica dell'identità dei mount esterni, il ripristino automatico di un intero albero, le revisioni native e gli elementi già nel cestino dei provider non sono coperti dai comandi attuali.
 
 ## 10. Decisioni operative e lavoro rimanente
 
-Sono già definite la posizione dello script nei dotfiles, i percorsi assoluti che rispecchiano il Mac, le aree plain/private, la cifratura di `.ssh`, `.config/rclone` e di tutte le directory `.git`, la protezione dei `.env`, le esclusioni concordate e i nomi ignorati in `settings.toml`. Una nuova esclusione o riclassificazione non elimina automaticamente le copie precedenti; per rimuoverle da `current` e `history` si usa un piano `forget` esplicito. Google è abilitato, Proton è ancora disabilitato.
+Sono già definite la posizione dello script nei dotfiles, i percorsi assoluti che rispecchiano il Mac, le aree plain/private, la cifratura di `.ssh`, `.config/rclone` e di tutte le directory `.git`, la protezione dei `.env`, le esclusioni concordate e i nomi ignorati in `settings.toml`. Una nuova esclusione o riclassificazione sposta alla prossima `run` la copia precedente da `current` a `history` della stessa area, senza cancellarla. Per rimuovere definitivamente o spostare nel cestino tutte le copie di un percorso da `current` e `history` si usa un piano `forget` esplicito. Google è abilitato, Proton è ancora disabilitato.
 
-Il prossimo traguardo è completare e verificare la copia Google avviata dall'utente. Poi si configura Proton Drive, si ripetono backup e recupero su quel servizio e si valuta il montaggio di consultazione in sola lettura. L'automazione si abilita solo dopo una prova riuscita di backup e recupero; non è prevista alcuna scadenza automatica dello storico.
+Il prossimo traguardo è verificare la copia Google e consultare i montaggi dal Desktop. Poi si configura Proton Drive e si ripetono backup e recupero su quel servizio. L'automazione si abilita solo dopo una prova riuscita di backup e recupero; non è prevista alcuna scadenza automatica dello storico.
 
 Se diventa necessario ripristinare cartelle intere esattamente a una data, va valutato uno strumento a snapshot come restic. `macbackup` oggi conserva i file spostati nello storico per run, non fotografie complete della selezione a ogni data.
 

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "home/.config/scripts/macbackup"
+SCRIPT = Path(__file__).resolve().parents[2] / "home/.config/scripts/macbackup"
 MODULE = runpy.run_path(str(SCRIPT))
 Policy = MODULE["Policy"]
 ConfigError = MODULE["ConfigError"]
@@ -160,19 +161,41 @@ class LocalSelectorTests(unittest.TestCase):
                                          if entry.decision.action in ('plain', 'private')])
         self.assertEqual(entries[str(self.normal)].decision.action, 'plain')
 
-    def test_ignored_file_name_skips_even_exact_inclusion_and_keeps_sibling(self):
+    def test_exact_plain_git_directory_overrides_automatic_privacy(self):
+        git_dir = self.project / '.git'
+        object_file = self.write(git_dir / 'objects/ab/cdef')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'private_directory_names = []', 'private_directory_names = [".git"]'))
+        self.set_rules(plain=[git_dir], patterns=('.env', '.env.*', '.git'))
+        entries = {entry.path: entry for entry in self.scan().entries}
+        self.assertEqual(entries[str(object_file)].decision.action, 'plain')
+        self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'plain')
+        self.set_rules(plain=[git_dir], private=[git_dir], patterns=('.env', '.env.*', '.git'))
+        self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'private')
+        self.assertEqual(self.action(object_file), 'private')
+        self.set_rules(plain=[git_dir], private=[git_dir], excluded=[git_dir],
+                       patterns=('.env', '.env.*', '.git'))
+        self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'skip')
+        self.assertEqual(self.action(object_file), 'skip')
+
+    def test_ignored_file_name_allows_exact_inclusion_and_keeps_sibling_ignored(self):
         unwanted = self.write(self.project / '.DS_Store')
         spaced = self.write(self.project / ' ← ')
         settings = self.config / 'settings.toml'
         settings.write_text(settings.read_text().replace(
             'ignored_file_names = [".DS_Store"]', 'ignored_file_names = [".DS_Store", " ← "]'))
         self.set_rules(plain=[self.project, unwanted])
-        self.assertEqual(self.action(unwanted), 'skip')
+        self.assertEqual(self.action(unwanted), 'plain')
         self.assertEqual(self.action(spaced), 'skip')
         entries = {entry.path: entry for entry in self.scan().entries}
-        self.assertEqual(entries[str(unwanted)].decision.action, 'skip')
+        self.assertEqual(entries[str(unwanted)].decision.action, 'plain')
         self.assertEqual(entries[str(spaced)].decision.action, 'skip')
         self.assertEqual(entries[str(self.normal)].decision.action, 'plain')
+        self.set_rules(plain=[self.project, unwanted], private=[unwanted])
+        self.assertEqual(self.action(unwanted), 'private')
+        self.set_rules(plain=[self.project, unwanted], private=[unwanted], excluded=[unwanted])
+        self.assertEqual(self.action(unwanted), 'skip')
 
     def test_invalid_ignored_file_names_fail_closed(self):
         settings = self.config / 'settings.toml'
@@ -183,6 +206,41 @@ class LocalSelectorTests(unittest.TestCase):
                                                      'ignored_file_names = [' + value + ']'))
                 with self.assertRaises(ConfigError):
                     self.policy()
+
+    @unittest.skipUnless(shutil.which('git'), 'Git is needed for .gitignore matching')
+    def test_optional_gitignore_uses_nested_rules_and_exact_file_override(self):
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'use_gitignore = false', 'use_gitignore = true'))
+        self.write(self.project / '.gitignore', '*.log\nbuild/\n')
+        ignored = self.write(self.project / 'debug.log')
+        kept = self.write(self.project / 'keep.log')
+        nested = self.write(self.project / 'nested/a.log')
+        self.write(self.project / 'nested/.gitignore', '!a.log\n')
+        generated = self.write(self.project / 'build/output.txt')
+        exact_plain = self.write(self.project / 'build/keep.txt')
+        exact_private = self.write(self.project / 'build/secret.txt')
+        self.set_rules(plain=[self.project, kept, exact_plain], private=[exact_private])
+        policy = self.policy()
+        self.assertEqual(policy.decide(ignored).action, 'skip')
+        self.assertEqual(policy.decide(kept).action, 'plain')
+        self.assertEqual(policy.decide(nested).action, 'plain')
+        self.assertEqual(policy.decide(generated.parent, directory=True).action, 'skip')
+        self.assertEqual(policy.decide(exact_plain).action, 'plain')
+        self.assertEqual(policy.decide(exact_private).action, 'private')
+        entries = {entry.path: entry for entry in scan_policy(policy).entries}
+        self.assertEqual(entries[str(generated.parent)].kind, 'excluded-subtree')
+        self.assertNotIn(str(generated), entries)
+        self.assertEqual(entries[str(exact_plain)].decision.action, 'plain')
+        self.assertEqual(entries[str(exact_private)].decision.action, 'private')
+        self.assertIn('.gitignore', entries[str(ignored)].decision.rule)
+
+    def test_invalid_gitignore_option_is_rejected(self):
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'use_gitignore = false', 'use_gitignore = "yes"'))
+        with self.assertRaises(ConfigError):
+            self.policy()
 
     def test_layout_shows_private_git_boundary_without_listing_env(self):
         object_file = self.write(self.project / '.git/objects/ab/cdef')

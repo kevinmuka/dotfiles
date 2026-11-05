@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 from contextlib import contextmanager
 from collections import Counter, defaultdict
@@ -29,7 +30,7 @@ import tty
 import uuid
 
 
-VERSION = "0.9.5"
+VERSION = "0.12.3"
 FINDER_ICON = "Icon\r"
 ICON_SIDECAR = "/icon.json"
 PATH_LISTS = ("plain-paths.txt", "private-paths.txt", "exclude-paths.txt")
@@ -42,6 +43,7 @@ max_delete = 25
 [policy]
 private_directory_names = []
 ignored_file_names = [".DS_Store"]
+use_gitignore = false
 
 [targets.google]
 enabled = false
@@ -57,6 +59,98 @@ private = "pdrive-private:"
 
 class ConfigError(Exception):
     pass
+
+
+class GitIgnoreMatcher:
+    """Ask Git to evaluate only .gitignore files, without a repository index."""
+    def __init__(self):
+        executable = shutil.which('git')
+        if executable is None:
+            raise ConfigError('use_gitignore richiede Git nel PATH.')
+        self.temporary = tempfile.TemporaryDirectory(prefix='macbackup-gitignore-')
+        gitdir = str(Path(self.temporary.name) / 'repo.git')
+        self.environment = {key: value for key, value in os.environ.items()
+                            if not key.startswith('GIT_')}
+        initialized = subprocess.run([executable, 'init', '--bare', '-q', gitdir],
+                                     env=self.environment, capture_output=True)
+        if initialized.returncode:
+            self.temporary.cleanup()
+            raise ConfigError('Impossibile inizializzare il controllo dei .gitignore: '
+                              + initialized.stderr.decode('utf-8', 'replace').strip())
+        command = [executable, '--git-dir', gitdir, '--work-tree', '/',
+                   '-c', 'core.bare=false', '-c', 'core.excludesFile=/dev/null',
+                   'check-ignore', '--no-index', '-z', '-v', '-n', '--stdin']
+        try:
+            self.process = subprocess.Popen(command, env=self.environment,
+                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE)
+        except OSError as exc:
+            self.temporary.cleanup()
+            raise ConfigError(f'Impossibile avviare il controllo dei .gitignore: {exc}') from exc
+        self.pending = b''
+        self.cache: dict[Path, tuple[bool, str | None]] = {}
+        atexit.register(self.close)
+
+    def preload(self, paths: list[Path]) -> None:
+        waiting = list(dict.fromkeys(path for path in paths if path not in self.cache))
+        assert self.process.stdin is not None and self.process.stdout is not None
+        try:
+            for offset in range(0, len(waiting), 16):
+                group = waiting[offset:offset + 16]
+                # Resolve symlinked ancestors, but never follow an entry itself.
+                physicals = [Path(os.path.realpath(path.parent)) / path.name for path in group]
+                self.process.stdin.write(b''.join(os.fsencode(str(path)) + b'\0'
+                                                  for path in physicals))
+                self.process.stdin.flush()
+                for path, physical in zip(group, physicals):
+                    while self.pending.count(b'\0') < 4:
+                        ready, _, _ = select.select([self.process.stdout], [], [], 30)
+                        if not ready:
+                            raise ConfigError('Controllo .gitignore senza risposta da Git.')
+                        chunk = os.read(self.process.stdout.fileno(), 4096)
+                        if not chunk:
+                            detail = self.process.stderr.read().decode('utf-8', 'replace').strip()
+                            raise ConfigError('Controllo .gitignore interrotto: ' + detail)
+                        self.pending += chunk
+                    fields = self.pending.split(b'\0', 4)
+                    self.pending = fields[4]
+                    source, line, pattern, returned = [field.decode('utf-8', 'replace')
+                                                       for field in fields[:4]]
+                    if returned != str(physical):
+                        raise ConfigError('Risposta .gitignore incoerente da Git.')
+                    ignored = bool(pattern) and not pattern.startswith('!')
+                    if ignored and source and not source.startswith('/'):
+                        source = '/' + source
+                    rule = f'{source}:{line}:{pattern}' if ignored else None
+                    self.cache[path] = (ignored, rule)
+        except OSError as exc:
+            raise ConfigError(f'Impossibile controllare .gitignore: {exc}') from exc
+
+    def match(self, path: Path) -> tuple[bool, str | None]:
+        self.preload([path])
+        return self.cache[path]
+
+    def close(self) -> None:
+        process = getattr(self, 'process', None)
+        if process is not None:
+            try:
+                if process.stdin is not None:
+                    process.stdin.close()
+                process.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                process.kill()
+                process.wait()
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+            self.process = None
+        temporary = getattr(self, 'temporary', None)
+        if temporary is not None:
+            temporary.cleanup()
+            self.temporary = None
+
+    def __del__(self):
+        self.close()
 
 
 def absolute_path(value: str) -> Path:
@@ -167,6 +261,13 @@ class Policy:
         except (OSError, ValueError) as exc:
             raise ConfigError(f'Impossibile leggere settings.toml: {exc}') from exc
         policy_settings = settings.get('policy', {})
+        target_names = settings.get('targets', {})
+        if not isinstance(target_names, dict):
+            raise ConfigError('settings.toml: targets deve essere una tabella.')
+        self.mount_roots = tuple(
+            home / 'Desktop' / (name if area == 'all' else f'{name}-{area}')
+            for name in target_names for area in ('plain', 'private', 'all')
+        )
         if not isinstance(policy_settings, dict):
             raise ConfigError('settings.toml: policy deve essere una tabella.')
         names = policy_settings.get('private_directory_names', [])
@@ -189,6 +290,10 @@ class Policy:
         ):
             raise ConfigError('settings.toml: ignored_file_names richiede nomi letterali di file.')
         self.ignored_file_names = {name.casefold() for name in ignored}
+        use_gitignore = policy_settings.get('use_gitignore', False)
+        if type(use_gitignore) is not bool:
+            raise ConfigError('settings.toml: use_gitignore deve essere true o false.')
+        self.gitignore = GitIgnoreMatcher() if use_gitignore else None
         self.patterns = []
         for number, pattern in read_lines(config_dir / PATTERN_FILE):
             invalid = (
@@ -234,24 +339,31 @@ class Policy:
     def roots(self) -> list[Rule]:
         return self.plain + self.private
 
-    def decide(self, path: Path, directory: bool = False) -> Decision:
+    def decide(self, path: Path, directory: bool = False,
+               check_gitignore: bool = True) -> Decision:
         physical = Path(os.path.realpath(path))
         if inside(path, self.state_dir) or inside(physical, self.state_physical):
             return Decision("skip", "Stato operativo escluso automaticamente.", str(self.state_dir))
+        mount_root = next((root for root in self.mount_roots if inside(path, root)), None)
+        if mount_root:
+            return Decision('skip', 'Punto di montaggio escluso automaticamente.', str(mount_root))
         excluded = next((rule for rule in self.excluded if rule.matches(path)), None)
         if excluded:
             return Decision("skip", "Esclusione assoluta.", str(excluded.path))
-        if not directory and path.name.casefold() in self.ignored_file_names:
-            return Decision('skip', 'Nome file ignorato dalla policy.',
-                            'settings.toml:[policy].ignored_file_names')
         private = next((rule for rule in self.private if rule.matches(path)), None)
         plain = next((rule for rule in self.plain if rule.matches(path)), None)
         if not (private or plain):
             return Decision("skip", "Percorso non selezionato.")
-        private_by_name = (
-            (directory and path.name.casefold() in self.private_directory_names)
-            or any(ancestor.name.casefold() in self.private_directory_names
-                   for ancestor in path.parents if ancestor != Path('/'))
+        exact = any(rule.path == path for rule in self.roots)
+        if not directory and path.name.casefold() in self.ignored_file_names and not exact:
+            return Decision('skip', 'Nome file ignorato dalla policy.',
+                            'settings.toml:[policy].ignored_file_names')
+        named_directories = ([path] if directory else []) + list(path.parents)
+        private_by_name = any(
+            ancestor != Path('/')
+            and ancestor.name.casefold() in self.private_directory_names
+            and not any(rule.path == ancestor for rule in self.plain)
+            for ancestor in named_directories
         )
         # Classify remote files using the same directory pruning as the local
         # scanner. Otherwise an older cloud copy under a newly protected
@@ -269,7 +381,6 @@ class Policy:
                     "skip", "Directory antenata protetta: richiede inclusione esatta.",
                     protected_pattern=protected_ancestor,
                 )
-        exact = any(rule.path == path for rule in self.roots)
         protected = next(
             (pattern for pattern in self.patterns
              if fnmatch.fnmatchcase(path.name.casefold(), pattern.casefold())), None
@@ -279,6 +390,10 @@ class Policy:
                 "skip", "Richiede un'inclusione esatta del percorso (explicit-only).",
                 protected_pattern=protected,
             )
+        if check_gitignore and self.gitignore is not None and not exact and not private_by_name:
+            ignored, source = self.gitignore.match(path)
+            if ignored:
+                return Decision('skip', 'Escluso da .gitignore.', source)
         if private:
             return Decision("private", "Inclusione privata.", str(private.path), protected, exact)
         if private_by_name:
@@ -434,7 +549,7 @@ def scan_policy(policy: Policy) -> Scan:
             return
         seen.add(path)
         # Absolute exclusions are authoritative, even for missing included roots.
-        preliminary = policy.decide(path, directory=True)
+        preliminary = policy.decide(path, directory=True, check_gitignore=False)
         if preliminary.action == "skip" and preliminary.rule:
             result.entries.append(Entry(str(path), "excluded-subtree", 0, preliminary, 0, 0))
             return
@@ -453,7 +568,7 @@ def scan_policy(policy: Policy) -> Scan:
                 return
             if kind == "directory":
                 if decision.action == "skip":
-                    if decision.protected_pattern:
+                    if decision.protected_pattern or decision.reason == 'Escluso da .gitignore.':
                         result.entries.append(Entry(str(path), "excluded-subtree", 0, decision, 0, 0))
                     return
                 # Anchor traversal to directory descriptors and refuse replaced
@@ -467,12 +582,17 @@ def scan_policy(policy: Policy) -> Scan:
                         raise OSError("La directory è cambiata durante il controllo.")
                     with os.scandir(fd) as iterator:
                         names = sorted(entry.name for entry in iterator)
+                    valid_names = []
                     for name in names:
                         try:
                             absolute_path(str(path)) if name == FINDER_ICON else absolute_path(str(path / name))
                         except ConfigError as exc:
                             result.errors.append(f"Nome non rappresentabile in {path}: {exc}")
                             continue
+                        valid_names.append(name)
+                    if policy.gitignore is not None:
+                        policy.gitignore.preload([path / name for name in valid_names])
+                    for name in valid_names:
                         visit(path / name, fd, name)
                 finally:
                     os.close(fd)
@@ -953,6 +1073,325 @@ def remote_join(root: str, relative: str) -> str:
     return root + ("" if root.endswith(":") else "/") + relative
 
 
+def terminal_can_color(stream) -> bool:
+    if not stream.isatty() or os.environ.get('PYTHON_COLORS') == '0':
+        return False
+    if os.environ.get('PYTHON_COLORS') == '1':
+        return True
+    if os.environ.get('NO_COLOR'):
+        return False
+    return bool(os.environ.get('FORCE_COLOR')) or os.environ.get('TERM') != 'dumb'
+
+
+def terminal_style(value: str, code: str, stream) -> str:
+    return f'\x1b[{code}m{value}\x1b[0m' if terminal_can_color(stream) else value
+
+
+class MountPulse:
+    """An indeterminate bar: inventory size and mount time are not known ahead."""
+
+    def __init__(self, label: str):
+        self.label = label
+        self.started = time.monotonic()
+        self.interactive = sys.stderr.isatty()
+        if not self.interactive:
+            print(f'{label}: in corso...', file=sys.stderr, flush=True)
+
+    def draw(self, metadata_bytes: int | None = None) -> None:
+        if not self.interactive:
+            return
+        width, block = 22, 5
+        offset = int((time.monotonic() - self.started) * 5) % (width + block)
+        bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
+                      for index in range(width))
+        elapsed = int(time.monotonic() - self.started)
+        detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
+                  if metadata_bytes is not None else '')
+        title = terminal_style(self.label, '1;36', sys.stderr)
+        progress = terminal_style(f'[{bar}]', '34', sys.stderr)
+        sys.stderr.write(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}')
+        sys.stderr.flush()
+
+    def done(self, detail: str) -> None:
+        if self.interactive:
+            sys.stderr.write('\r\x1b[2K')
+        elapsed = int(time.monotonic() - self.started)
+        color = '31' if detail == 'errore' else '33' if detail == 'interrotto' else '32'
+        status = terminal_style(detail, color, sys.stderr)
+        title = terminal_style(self.label, '1;36', sys.stderr)
+        print(f'{title}: {status} ({elapsed}s).', file=sys.stderr, flush=True)
+
+
+def mount_input_wait(input_fd: int | None, timeout: float) -> None:
+    """Wait for the next mount check while discarding typed characters."""
+    if input_fd is None:
+        time.sleep(timeout)
+    elif select.select([input_fd], [], [], timeout)[0]:
+        os.read(input_fd, 4096)
+
+
+def mount_inventory(root: str, label: str, input_fd: int | None = None) -> list[dict]:
+    executable = shutil.which('rclone')
+    if executable is None:
+        raise ConfigError('rclone non è disponibile nel PATH.')
+    pulse = MountPulse(f'Inventario {label}')
+    with tempfile.TemporaryFile(mode='w+t', encoding='utf-8') as output, \
+            tempfile.TemporaryFile(mode='w+t', encoding='utf-8') as errors:
+        try:
+            process = subprocess.Popen(
+                [executable, '--ask-password=false', 'lsjson', root,
+                 '--recursive', '--links'],
+                stdout=output, stderr=errors, env=transport_env(),
+                start_new_session=True)
+        except OSError as exc:
+            pulse.done('errore')
+            raise TransportError(f'Impossibile avviare rclone: {exc}') from exc
+        try:
+            while process.poll() is None:
+                pulse.draw(os.fstat(output.fileno()).st_size)
+                mount_input_wait(input_fd, 0.2)
+            code = process.wait()
+        except KeyboardInterrupt as exc:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            pulse.done('interrotto')
+            raise ConfigError('Montaggio interrotto dall’utente.') from exc
+        output.seek(0)
+        errors.seek(0)
+        raw, detail = output.read(), errors.read()
+        if code == 3 and (not raw.strip() or raw.strip() == '[]') \
+                and 'directory not found' in detail.lower():
+            raw = '[]'
+        elif code != 0:
+            pulse.done('errore')
+            raise TransportError(f'Inventario {label}: rclone è terminato con codice {code}: '
+                                 + detail.strip()[-1200:])
+    try:
+        items = json.loads(raw)
+    except ValueError as exc:
+        pulse.done('errore')
+        raise TransportError(f'Inventario {label}: risposta JSON non valida.') from exc
+    if not isinstance(items, list):
+        pulse.done('errore')
+        raise TransportError(f'Inventario {label}: formato inatteso.')
+    pulse.done(f'{len(items)} voci lette')
+    return items
+
+
+def mount_current_conflicts(roots: dict[str, str], target: str = '',
+                            input_fd: int | None = None) -> None:
+    """Refuse a merged view if an object could mask one from the other area."""
+    inventories = []
+    for area in ('plain', 'private'):
+        objects = {}
+        for item in mount_inventory(remote_join(roots[area], 'current'),
+                                    f'{target}/{area}' if target else area, input_fd):
+            path = item.get('Path')
+            if (not isinstance(path, str) or not path or path.startswith('/')
+                    or any(part in ('', '.', '..') for part in path.split('/'))):
+                raise TransportError('Il cloud ha restituito un percorso non valido; montaggio bloccato.')
+            objects[path] = bool(item.get('IsDir'))
+        inventories.append(objects)
+    plain, private = inventories
+    conflicts = sorted(path for path in plain.keys() & private.keys()
+                       if not plain[path] or not private[path])
+    if conflicts:
+        examples = ', '.join('/' + path for path in conflicts[:5])
+        remaining = f' (e altri {len(conflicts) - 5})' if len(conflicts) > 5 else ''
+        raise ConfigError(
+            f'current contiene {len(conflicts)} percorsi in conflitto fra plain e private: '
+            f'{examples}{remaining}. Il volume unificato non è stato montato; '
+            'consultare le aree con --area plain e --area private.')
+
+
+def mount_merged_env(roots: dict[str, str]) -> tuple[str, dict[str, str]]:
+    suffix = uuid.uuid4().hex[:12]
+    names = {part: f'macbackup_mount_{suffix}_{part}'
+             for part in ('current', 'history', 'icons', 'view')}
+    prefix = lambda part: 'RCLONE_CONFIG_' + names[part].upper() + '_'
+    env = {
+        prefix('current') + 'TYPE': 'union',
+        prefix('current') + 'UPSTREAMS': ' '.join(
+            json.dumps(remote_join(roots[area], 'current') + ':ro')
+            for area in ('private', 'plain')),
+        prefix('current') + 'SEARCH_POLICY': 'epall',
+        prefix('history') + 'TYPE': 'combine',
+        prefix('history') + 'UPSTREAMS': ' '.join(
+            json.dumps(f'{area}={remote_join(roots[area], "history")}')
+            for area in ('plain', 'private')),
+        prefix('icons') + 'TYPE': 'combine',
+        prefix('icons') + 'UPSTREAMS': ' '.join(
+            json.dumps(f'{area}={remote_join(roots[area], "macos-icons")}')
+            for area in ('plain', 'private')),
+        prefix('view') + 'TYPE': 'combine',
+        prefix('view') + 'UPSTREAMS': ' '.join(
+            f'{part}={names[part]}:' for part in ('current', 'history', 'icons')),
+    }
+    return names['view'] + ':', env
+
+
+@contextmanager
+def discard_mount_input():
+    """Hide and discard terminal input while a foreground mount is active."""
+    if not sys.stdin.isatty():
+        yield None
+        return
+    fd = sys.stdin.fileno()
+    original = termios.tcgetattr(fd)
+    active = termios.tcgetattr(fd)
+    active[3] &= ~(termios.ECHO | termios.ICANON)
+    active[0] &= ~termios.IXON
+    active[6][termios.VMIN] = 1
+    active[6][termios.VTIME] = 0
+    disabled = os.fpathconf(fd, 'PC_VDISABLE')
+    for name in ('VQUIT', 'VSUSP', 'VDSUSP'):
+        index = getattr(termios, name, None)
+        if index is not None:
+            active[6][index] = bytes((disabled,))
+    try:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, active)
+        yield fd
+    finally:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, original)
+
+
+def mount_operation(args, config: Path, home: Path) -> int:
+    with discard_mount_input() as input_fd:
+        return _mount_operation(args, config, home, input_fd)
+
+
+def _mount_operation(args, config: Path, home: Path, input_fd: int | None) -> int:
+    if sys.platform != 'darwin':
+        raise ConfigError('Il montaggio macbackup richiede macOS.')
+    targets, _ = load_targets(config, args.target)
+    policy = Policy(config, home)
+    base = absolute_path(args.mountpoint) if args.mountpoint else home / 'Desktop'
+    if args.area == 'all':
+        mounts = []
+        for name, roots in targets.items():
+            mount_current_conflicts(roots, name, input_fd)
+            view, env = mount_merged_env(roots)
+            mounts.append((name, 'all', view, base / name, env))
+    else:
+        mounts = [(name, args.area, roots[args.area], base / f'{name}-{args.area}', {})
+                  for name, roots in targets.items()]
+    for _, _, _, point, _ in mounts:
+        if point not in policy.mount_roots and any(
+                inside(point, rule.path) or inside(rule.path, point) for rule in policy.roots):
+            raise ConfigError(f'{point}: il montaggio si sovrappone a una sorgente del backup.')
+        ancestors_below_home = []
+        for ancestor in (point, *point.parents):
+            if ancestor == home:
+                break
+            ancestors_below_home.append(ancestor)
+        if any(ancestor.is_symlink() for ancestor in ancestors_below_home):
+            raise ConfigError(f'{point}: il percorso del montaggio attraversa un collegamento simbolico.')
+        if os.path.ismount(point):
+            raise ConfigError(f'{point}: già montato.')
+        if point.exists() and (not point.is_dir() or any(point.iterdir())):
+            raise ConfigError(f'{point}: occorre una directory vuota.')
+    state = home / '.local/state/macbackup'
+    if state.is_symlink():
+        raise ConfigError('La directory di stato non può essere un collegamento.')
+    state.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(state, 0o700)
+    processes = []
+    created_points = []
+    mounted_points = set()
+    interrupted = False
+    try:
+        for name, area, remote, point, extra_env in mounts:
+            created = not point.exists()
+            if created:
+                point.mkdir(parents=True, mode=0o700)
+            if created:
+                info = point.stat()
+                created_points.append((point, info.st_dev, info.st_ino))
+            log = state / f'mount-{name}-{area}.log'
+            fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'w') as output:
+                process = subprocess.Popen(
+                    ['rclone', 'nfsmount', remote, str(point), '--read-only',
+                     '--vfs-cache-mode', 'off', '--addr', '127.0.0.1:0'],
+                    stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                    start_new_session=True, env=transport_env() | extra_env)
+            processes.append((process, point, log))
+            deadline = time.monotonic() + 30
+            pulse = MountPulse(f'Avvio {name}/{area}')
+            try:
+                while not os.path.ismount(point):
+                    code = process.poll()
+                    if code is not None:
+                        detail = log.read_text(errors='replace')[-1200:]
+                        if code == 0 and 'Unmounted rclone mount' in detail:
+                            pulse.done('smontato')
+                            print(f'{terminal_style("Volume smontato:", "1;32", sys.stdout)} '
+                                  f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+                            return 0
+                    if code is not None or time.monotonic() >= deadline:
+                        pulse.done('errore')
+                        detail = log.read_text(errors='replace')[-1200:]
+                        raise TransportError(f'Montaggio {name}/{area} fallito: {detail or "nessuna risposta da rclone."}')
+                    pulse.draw()
+                    mount_input_wait(input_fd, 0.2)
+            except KeyboardInterrupt:
+                pulse.done('interrotto')
+                raise
+            pulse.done('completato')
+            mounted_points.add(point)
+            print(f'{terminal_style(f"Montato {name}/{area} in sola lettura:", "1;32", sys.stdout)} '
+                  f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+        print(terminal_style('Lascia questo terminale aperto; premi Ctrl-C o espelli il volume dal Finder (⌘E).',
+                             '2', sys.stdout), flush=True)
+        while True:
+            for process, point, log in processes:
+                code = process.poll()
+                if code is not None:
+                    if code == 0:
+                        deadline = time.monotonic() + 3
+                        while os.path.ismount(point) and time.monotonic() < deadline:
+                            mount_input_wait(input_fd, 0.1)
+                        if not os.path.ismount(point):
+                            print(f'{terminal_style("Volume smontato:", "1;32", sys.stdout)} '
+                                  f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+                            return 0
+                    detail = log.read_text(errors='replace')[-1200:]
+                    raise TransportError(f'Montaggio terminato con codice {code}: {point}. {detail}')
+            mount_input_wait(input_fd, 1)
+    except KeyboardInterrupt:
+        interrupted = True
+        print('\nSmontaggio in corso...', flush=True)
+    finally:
+        for process, _, _ in reversed(processes):
+            if process.poll() is None:
+                process.terminate()
+        for process, point, _ in reversed(processes):
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                print(f'{terminal_style("AVVISO:", "1;33", sys.stderr)} '
+                      f'{point} non si è smontato; controllare con mount.', file=sys.stderr)
+        for point, device, inode in reversed(created_points):
+            try:
+                info = point.lstat()
+                if (not os.path.ismount(point) and stat.S_ISDIR(info.st_mode)
+                        and (info.st_dev, info.st_ino) == (device, inode)):
+                    point.rmdir()
+            except (FileNotFoundError, OSError):
+                # An active mount, changed directory or nonempty folder is left intact.
+                pass
+        if interrupted:
+            for _, point, _ in processes:
+                if point in mounted_points and not os.path.ismount(point):
+                    print(f'{terminal_style("Volume smontato:", "1;32", sys.stdout)} '
+                          f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+    return 0
+
+
 def remote_files(root: str) -> list[str]:
     text = rclone_call("lsjson", root, "--recursive", "--files-only", "--links", missing_ok=True)
     files = []
@@ -991,17 +1430,25 @@ def selected_names(scan: Scan, area: str) -> set[str]:
             for entry in scan.entries if entry.decision.action == area and entry.kind != 'finder-icon'}
 
 
-def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int) -> list[dict]:
+def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
+                  enforce_limit: bool = True) -> list[dict]:
     if scan.errors:
         raise ConfigError("La selezione locale contiene errori. Eseguire macbackup check.")
-    if not policy.roots:
-        raise ConfigError("Nessuna sorgente selezionata: operazione rclone bloccata.")
     plans = []
+    any_existing = False
     for target, areas in targets.items():
         for area, root in areas.items():
             local = selected_names(scan, area)
             managed = set()
+            policy_archives = []
             existing = remote_files(remote_join(root, "current"))
+            any_existing = any_existing or bool(existing)
+            if policy.gitignore is not None:
+                policy.gitignore.preload([
+                    absolute_path('/' + (name[:-len('.rclonelink')]
+                                         if name.endswith('.rclonelink') else name))
+                    for name in existing
+                ])
             for name in existing:
                 logical = name[:-len(".rclonelink")] if name.endswith(".rclonelink") else name
                 decision = policy.decide(absolute_path("/" + logical))
@@ -1009,20 +1456,29 @@ def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int) -> list
                     raise ConfigError(decision.reason)
                 if decision.action == area:
                     managed.add(name)
+                else:
+                    policy_archives.append({
+                        'path': '/' + logical, 'relative': name,
+                        'remote_path': remote_join(root, 'current/' + name),
+                        'reason': decision.reason, 'rule': decision.rule,
+                        'current_area': area, 'new_action': decision.action,
+                    })
             deletions = managed - local
-            if len(deletions) > limit:
-                raise ConfigError(f"{target}/{area}: {len(deletions)} archiviazioni per cancellazione "
-                                  f"superano max_delete={limit}; nessun trasferimento avviato.")
-            plans.append({"target": target, "area": area, "root": root,
-                          "files": sorted(local | managed), "selected": len(local),
-                          "local": sorted(local), "existing": existing,
-                          "deletions": sorted(deletions),
-                          "archive_deleted": len(deletions)})
+            file_plan = {"target": target, "area": area, "root": root,
+                         "files": sorted(local | managed), "selected": len(local),
+                         "local": sorted(local), "existing": existing,
+                         "deletions": sorted(deletions),
+                         "archive_deleted": len(deletions),
+                         "policy_archives": policy_archives,
+                         "archive_policy": len(policy_archives)}
+            plans.append(file_plan)
             icons = [entry for entry in scan.entries if entry.kind == 'finder-icon' and entry.decision.action == area]
             icon_local = {str(Path(entry.path).parent).lstrip('/') + ICON_SIDECAR for entry in icons}
             icon_root = remote_join(root, 'macos-icons')
             icon_existing = remote_files(remote_join(icon_root, 'current'))
+            any_existing = any_existing or bool(icon_existing)
             icon_managed = set()
+            icon_policy_archives = []
             for name in icon_existing:
                 if not name.endswith(ICON_SIDECAR):
                     raise TransportError("Percorso inatteso nell'area riservata alle icone.")
@@ -1032,15 +1488,33 @@ def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int) -> list
                     raise ConfigError(decision.reason)
                 if decision.action == area:
                     icon_managed.add(name)
+                else:
+                    icon_policy_archives.append({
+                        'path': str(parent / FINDER_ICON),
+                        'relative': name,
+                        'remote_path': remote_join(icon_root, 'current/' + name),
+                        'reason': decision.reason, 'rule': decision.rule,
+                        'current_area': area, 'new_action': decision.action,
+                    })
             icon_deleted = icon_managed - icon_local
-            if len(deletions) + len(icon_deleted) > limit:
-                raise ConfigError(f"{target}/{area}: archiviazioni di file e icone superano max_delete={limit}.")
+            total_archives = (len(deletions) + len(policy_archives) +
+                              len(icon_deleted) + len(icon_policy_archives))
+            exceeded = total_archives > limit
+            file_plan['archive_limit_exceeded'] = exceeded
+            if exceeded and enforce_limit:
+                raise ConfigError(f"{target}/{area}: {total_archives} archiviazioni tra file e icone "
+                                  f"superano max_delete={limit}; nessun trasferimento avviato.")
             if icons or icon_existing:
                 plans.append({'target': target, 'area': area, 'root': icon_root, 'kind': 'macos-icons',
                               'icons': icons, 'files': sorted(icon_local | icon_managed),
                               'local': sorted(icon_local), 'existing': icon_existing,
                               'selected': len(icon_local), 'deletions': sorted(icon_deleted),
-                              'archive_deleted': len(icon_deleted)})
+                              'archive_deleted': len(icon_deleted),
+                              'policy_archives': icon_policy_archives,
+                              'archive_policy': len(icon_policy_archives),
+                              'archive_limit_exceeded': exceeded})
+    if not policy.roots and not any_existing:
+        raise ConfigError("Nessuna sorgente selezionata né copia corrente da archiviare: operazione rclone bloccata.")
     return plans
 
 
@@ -1109,7 +1583,7 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
             "sync", plan.get('source', '/'), remote_join(plan["root"], "current"),
             "--files-from0", str(manifest), "--links", "--copy-links=false",
             "--backup-dir", remote_join(plan["root"], "history/" + run_id),
-            "--delete-excluded=false", "--max-delete", str(limit),
+            "--delete-excluded=false", "--max-delete", str(max(limit, len(plan['deletions'])) if dry_run else limit),
             "--log-level", "ERROR" if dry_run else "NOTICE", "--retries", "1",
         ]
         arguments.append("--ignore-times" if plan["area"] == "private" else "--checksum")
@@ -1123,13 +1597,22 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
                                    f"{plan['target']}/{plan['area']}/{plan.get('kind', 'files')}")
 
 
+def archive_policy_copies(plan: dict, run_id: str, completed: list[dict]) -> None:
+    """Move policy-revoked current copies into the same area's run history."""
+    for item in plan['policy_archives']:
+        destination = remote_join(plan['root'], 'history/' + run_id + '/' + item['relative'])
+        rclone_call('moveto', item['remote_path'], destination, '--retries', '1')
+        completed.append({key: value for key, value in item.items() if key != 'relative'} |
+                         {'history_path': destination})
+
+
 def transport_operation(args, policy: Policy) -> int:
     if getattr(args, 'progress_depth', 2) not in range(1, 6):
         raise ConfigError('--progress-depth deve essere un intero fra 1 e 5.')
     targets, limit = load_targets(policy.config_dir, args.target)
     with operation_lock(policy.state_dir):
         scan = scan_policy(policy)
-        plans = transfer_plan(policy, scan, targets, limit)
+        plans = transfer_plan(policy, scan, targets, limit, enforce_limit=args.command == 'run')
         if args.command == "check":
             result = {"scope": "remote-read-only", "ok": True,
                       "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud."}
@@ -1138,8 +1621,15 @@ def transport_operation(args, policy: Policy) -> int:
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
         results = []
         for plan in plans:
-            result = {key: plan[key] for key in ("target", "area", "selected", "archive_deleted")}
+            result = {key: plan[key] for key in ("target", "area", "selected", "archive_deleted", "archive_policy")}
+            result['archive_limit_exceeded'] = plan['archive_limit_exceeded']
             result['kind'] = plan.get('kind', 'files')
+            result['policy_archives'] = [
+                {key: value for key, value in item.items() if key != 'relative'}
+                for item in plan['policy_archives']
+            ]
+            if args.command == 'run':
+                result['policy_archived'] = []
             if args.command == 'run':
                 print(f"Avvio {plan['target']}/{plan['area']}/{result['kind']}: "
                       f"{plan['selected']} elementi selezionati.", file=sys.stderr, flush=True)
@@ -1149,6 +1639,7 @@ def transport_operation(args, policy: Policy) -> int:
                                      getattr(args, 'progress_depth', 2))
                 if args.command == 'run':
                     result.update(transfer_metrics(stats, True))
+                    archive_policy_copies(plan, run_id, result['policy_archived'])
                 result["ok"] = True
             except TransferInterrupted as exc:
                 result.update(transfer_metrics(exc.stats, False))
@@ -1162,7 +1653,7 @@ def transport_operation(args, policy: Policy) -> int:
                 results.append(result)
                 break
             except (ConfigError, TransportError, OSError) as exc:
-                if args.command == 'run':
+                if args.command == 'run' and 'transferred_files' not in result:
                     result.update(transfer_metrics(getattr(exc, 'stats', None), False))
                 result.update(ok=False, error=str(exc))
             results.append(result)
@@ -1183,8 +1674,16 @@ def transport_operation(args, policy: Policy) -> int:
             print(data["note"])
             for result in results:
                 print(f"{result['target']}/{result['area']}/{result['kind']}: {'OK' if result['ok'] else 'ERRORE'}; "
-                      f"selezionati {result['selected']}; da archiviare per cancellazione {result['archive_deleted']}.")
+                      f"selezionati {result['selected']}; da archiviare per cancellazione {result['archive_deleted']}; "
+                      f"da archiviare per policy {result['archive_policy']}.")
+                for item in result['policy_archives']:
+                    print(f"  Policy: {item['path']} → {item['new_action']}; {item['reason']}" +
+                          (f" Regola: {item['rule']}" if item['rule'] else ''))
+                if result['archive_limit_exceeded']:
+                    print(f"  AVVISO: supera max_delete={limit}; una run si fermerebbe prima dei trasferimenti.")
                 if args.command == 'run':
+                    if result['archive_policy']:
+                        print(f"Archiviati per policy: {len(result['policy_archived'])}/{result['archive_policy']}.")
                     if result.get('transferred_files') is None:
                         print('Trasferimenti: conteggio non disponibile.')
                     else:
@@ -1278,6 +1777,57 @@ def check_permanent_google(targets: dict) -> None:
         raise ConfigError('La rimozione definitiva richiede un remote Google Drive reale.')
 
 
+def forget_directory_present(root: str) -> bool:
+    parent, name = root.rsplit('/', 1)
+    listing = json.loads(rclone_call('lsjson', parent, '--dirs-only',
+                                     '--original', missing_ok=True))
+    matches = [item for item in listing if item.get('Name') == name]
+    if len(matches) > 1:
+        raise TransportError('Directory duplicate nel cloud: forget bloccato.')
+    return bool(matches)
+
+
+def forget_cleanup_roots(targets: dict, requested: str, area_filter: str) -> list[str]:
+    """Find the exact requested directory in current and each history version."""
+    roots = set()
+    for areas in targets.values():
+        for area, area_root in areas.items():
+            if area_filter != 'all' and area != area_filter:
+                continue
+            for kind in ('files', 'macos-icons'):
+                prefix = area_root if kind == 'files' else remote_join(area_root, 'macos-icons')
+                current = remote_join(remote_join(prefix, 'current'), requested.lstrip('/'))
+                if forget_directory_present(current):
+                    roots.add(current)
+                history = remote_join(prefix, 'history')
+                versions = json.loads(rclone_call('lsjson', history, '--dirs-only',
+                                                  '--original', missing_ok=True))
+                seen = set()
+                for version in versions:
+                    name = version.get('Name')
+                    if not isinstance(name, str) or not name or '/' in name or name in ('.', '..'):
+                        raise TransportError('Versione storica con percorso non valido.')
+                    if name in seen:
+                        raise TransportError('Versioni storiche duplicate nel cloud.')
+                    seen.add(name)
+                    root = remote_join(remote_join(history, name), requested.lstrip('/'))
+                    if forget_directory_present(root):
+                        roots.add(root)
+    return sorted(roots)
+
+
+def forget_remove_empty_roots(roots: list[str], flag: str) -> list[str]:
+    """Remove only empty directories, then confirm that each requested root vanished."""
+    completed = []
+    for root in roots:
+        if forget_directory_present(root):
+            rclone_call('rmdirs', root, flag, '--retries', '1')
+        if forget_directory_present(root):
+            raise TransportError('Directory ancora presente dopo la pulizia: ' + root)
+        completed.append(root)
+    return completed
+
+
 def forget_operation(args, config: Path, home: Path) -> int:
     state = home / '.local/state/macbackup'
     with operation_lock(state):
@@ -1311,6 +1861,10 @@ def forget_operation(args, config: Path, home: Path) -> int:
             current = forget_inventory(targets, data['requested'], data['subtree'], data['area'])
             if current != data.get('items'):
                 raise ConfigError('Le copie cloud sono cambiate: creare un nuovo piano.')
+            cleanup_roots = (forget_cleanup_roots(targets, data['requested'], data['area'])
+                             if data['subtree'] else [])
+            if cleanup_roots != data.get('cleanup_roots', cleanup_roots):
+                raise ConfigError('Le directory del piano sono cambiate: crearne uno nuovo.')
             applying = plans / (args.plan + '.applying')
             os.replace(file, applying)
             completed = []
@@ -1328,11 +1882,18 @@ def forget_operation(args, config: Path, home: Path) -> int:
             except (ConfigError, TransportError) as exc:
                 remaining = None
                 error = str(exc) if error is None else error + '; verifica finale: ' + str(exc)
+            cleaned_roots = []
+            if error is None and remaining == [] and cleanup_roots:
+                try:
+                    cleaned_roots = forget_remove_empty_roots(cleanup_roots, flag)
+                except (ConfigError, TransportError) as exc:
+                    error = 'Pulizia delle directory vuote: ' + str(exc)
             result = {
                 'operation': 'forget-apply', 'plan_id': args.plan,
                 'ok': error is None and remaining == [], 'mode': data['mode'],
                 'attempted': len(completed) + (1 if error and len(completed) < len(current) else 0),
                 'removed_from_active_backup': completed,
+                'empty_directory_roots_removed': cleaned_roots,
                 'remaining': remaining, 'error': error,
                 'note': ('Cestino del servizio: non equivale a cancellazione definitiva.'
                          if data['mode'] == 'trash' else
@@ -1343,6 +1904,8 @@ def forget_operation(args, config: Path, home: Path) -> int:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(f"Piano {args.plan}: {len(completed)}/{len(current)} file rimossi dalle cartelle del backup.")
+                if cleanup_roots:
+                    print(f"Directory vuote ripulite: {len(cleaned_roots)}/{len(cleanup_roots)} radici selezionate.")
                 if error:
                     print('ERRORE: ' + error)
                 print(result['note'])
@@ -1363,19 +1926,23 @@ def forget_operation(args, config: Path, home: Path) -> int:
         if args.mode == 'permanent':
             check_permanent_google(targets)
         items = forget_inventory(targets, str(requested), subtree, args.area)
+        cleanup_roots = forget_cleanup_roots(targets, str(requested), args.area) if subtree else []
         if len(items) > 10000:
             raise ConfigError('Oltre 10000 file: restringere il percorso e creare più piani.')
         result = {
             'operation': 'forget-plan', 'plan_id': None, 'requested': str(requested),
             'subtree': subtree, 'area': args.area, 'target': args.target,
             'mode': args.mode, 'items': items, 'count': len(items),
+            'cleanup_roots': cleanup_roots,
             'known_bytes': sum(item['size'] for item in items),
             'selected_locally': None,
-            'note': ('Questi file verranno spostati nel cestino del servizio.' if args.mode == 'trash'
-                     else 'Questi file verranno cancellati definitivamente tramite il provider; '
-                          'revisioni native e vecchio cestino non sono inclusi.'),
+            'note': ('I file verranno spostati nel cestino del servizio; le directory vuote '
+                     'comprese nel piano verranno rimosse.' if args.mode == 'trash' else
+                     'I file e le directory vuote compresi nel piano verranno cancellati '
+                     'definitivamente tramite il provider; revisioni native e vecchio cestino '
+                     'non sono inclusi.'),
         }
-        if items:
+        if items or cleanup_roots:
             # The selector is advisory here. Forget must still find old copies
             # after exclusions or routing changes.
             try:
@@ -1389,6 +1956,7 @@ def forget_operation(args, config: Path, home: Path) -> int:
                 'requested': str(requested), 'subtree': subtree,
                 'target': args.target, 'area': args.area, 'mode': args.mode,
                 'roots': targets, 'items': items,
+                'cleanup_roots': cleanup_roots,
                 'expires_at': time.time() + 3600,
             }
             write_private_json(plans / (plan_id + '.json'), data)
@@ -1400,6 +1968,10 @@ def forget_operation(args, config: Path, home: Path) -> int:
             print(f"Corrispondenze: {len(items)} file, {result['known_bytes']} byte noti.")
             for item in items:
                 print(f"{item['target']}/{item['area']}/{item['location']}: {item['remote_path']}")
+            if cleanup_roots:
+                print(f"Directory da ripulire se vuote: {len(cleanup_roots)} radici.")
+                for root in cleanup_roots:
+                    print(f"Directory: {root}")
             if result['selected_locally']:
                 print('AVVISO: il percorso è ancora selezionato e potrebbe essere ricaricato dalla prossima run.')
             print(result['note'])
@@ -1785,58 +2357,74 @@ def make_parser() -> argparse.ArgumentParser:
     check = commands.add_parser("check", help="controlla gli elenchi e le sorgenti locali")
     check.add_argument("--json", action="store_true", help="risultato strutturato")
     check.add_argument("--remote", action="store_true", help="controlla anche i remotes, senza scrivere sul cloud")
-    check.add_argument("--target", choices=("google", "proton", "all"), help="destinazione del controllo remoto")
+    check.add_argument("--target", choices=("google", "proton", "all"), help="destinazione del controllo remoto; richiede --remote (predefinita: google)")
     explain = commands.add_parser("explain", help="spiega la classificazione di un singolo percorso")
     explain.add_argument("path", metavar="PATH")
-    explain.add_argument("--json", action="store_true")
+    explain.add_argument("--json", action="store_true", help="stampa la classificazione in JSON")
     layout = commands.add_parser('layout', help='mostra le parti private dentro una directory plain')
     layout.add_argument('path', nargs='?', metavar='PATH', help='cartella plain; predefinita: directory corrente')
-    layout.add_argument('--json', action='store_true')
+    layout.add_argument('--json', action='store_true', help='stampa il risultato in JSON')
     preview = commands.add_parser("preview", help="anteprima locale o confronto remoto senza modifiche cloud")
     mode = preview.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--local", action="store_true")
-    mode.add_argument("--target", choices=("google", "proton", "all"))
-    preview.add_argument("--json", action="store_true")
+    mode.add_argument("--local", action="store_true", help="mostra la selezione locale senza accesso cloud")
+    mode.add_argument("--target", choices=("google", "proton", "all"), help="confronta il cloud in sola lettura e mostra le archiviazioni previste")
+    preview.add_argument("--json", action="store_true", help="stampa il piano in JSON")
     run = commands.add_parser("run", help="esegue il backup; richiede destinazioni abilitate e sorgenti valide")
-    run.add_argument("--target", choices=("google", "proton", "all"), required=True)
+    run.add_argument("--target", choices=("google", "proton", "all"), required=True,
+                     help="destinazione del backup; applica le archiviazioni entro max_delete")
     run.add_argument('--progress-depth', type=int, default=2, metavar='N',
                      help='livelli di cartelle attive da mostrare rispetto alla home (1-5; predefinito 2)')
-    run.add_argument("--json", action="store_true")
+    run.add_argument("--json", action="store_true", help="stampa il riepilogo finale in JSON; il progresso resta su stderr")
+    mount = commands.add_parser('mount', help='monta le copie cloud in sola lettura per consultazione')
+    mount.add_argument('--target', choices=('google', 'proton', 'all'), required=True,
+                       help='servizio da montare; deve essere abilitato in settings.toml')
+    mount.add_argument('--area', choices=('plain', 'private', 'all'), default='all',
+                       help='aree da mostrare (predefinita: all)')
+    mount.add_argument('--mountpoint', metavar='ABS_PATH',
+                       help='cartella base; predefinita: ~/Desktop')
     status = commands.add_parser("status", help="mostra l'esito memorizzato dell'ultima run")
-    status.add_argument("--json", action="store_true")
+    status.add_argument("--json", action="store_true", help="compatibilità: status stampa già JSON")
     icon = commands.add_parser('restore-icon', help='ripristina una sola icona Finder da un file di metadati locale')
     icon.add_argument('--file', required=True, metavar='PATH', help='snapshot icon.json scaricato dal backup')
     icon.add_argument('--folder', required=True, metavar='PATH', help='cartella locale esistente su cui applicare l\'icona')
     icon.add_argument('--replace', action='store_true', help='consente di sostituire un\'icona già presente')
-    icon.add_argument('--json', action='store_true')
+    icon.add_argument('--json', action='store_true', help='stampa il risultato in JSON')
     forget = commands.add_parser('forget', help='prepara o applica una rimozione selettiva da current e history')
     forget.add_argument('path', nargs='?', metavar='ABS_PATH', help='percorso originale; / finale per una directory')
-    forget.add_argument('--area', choices=('plain', 'private', 'all'))
-    forget.add_argument('--target', choices=('google', 'proton', 'all'))
-    forget.add_argument('--mode', choices=('trash', 'permanent'))
+    forget.add_argument('--area', choices=('plain', 'private', 'all'), help='area da cui rimuovere copie correnti e storiche')
+    forget.add_argument('--target', choices=('google', 'proton', 'all'), help='destinazione da cui rimuovere le copie')
+    forget.add_argument('--mode', choices=('trash', 'permanent'), help='cestino o rimozione definitiva; permanent solo su Google')
     forget.add_argument('--plan', metavar='ID', help='piano da applicare')
     forget.add_argument('--apply', action='store_true', help='applica il piano verificato')
-    forget.add_argument('--json', action='store_true')
-    versions = commands.add_parser('versions', help='elenca current e gli storici di un file')
+    forget.add_argument('--json', action='store_true', help='stampa il piano o il risultato in JSON')
+    versions = commands.add_parser('versions', help='elenca current e gli storici di un file o una directory')
     versions.add_argument('path', metavar='ABS_PATH')
-    versions.add_argument('--target', choices=('google', 'proton', 'all'), required=True)
-    versions.add_argument('--area', choices=('plain', 'private', 'all'), default='all')
-    versions.add_argument('--files', action='store_true', help='mostra i singoli elementi sotto una directory')
-    versions.add_argument('--json', action='store_true')
+    versions.add_argument('--target', choices=('google', 'proton', 'all'), required=True,
+                          help='destinazione in cui cercare le versioni')
+    versions.add_argument('--area', choices=('plain', 'private', 'all'), default='all',
+                          help='area in cui cercare (predefinita: all)')
+    versions.add_argument('--files', action='store_true', help='per una directory, elenca solo i file presenti negli storici')
+    versions.add_argument('--json', action='store_true', help='stampa le versioni in JSON')
     restore = commands.add_parser('restore', help='scarica una versione di un file in un percorso esplicito')
     restore.add_argument('path', metavar='ABS_PATH')
-    restore.add_argument('--target', choices=('google', 'proton'), required=True)
-    restore.add_argument('--area', choices=('plain', 'private'), required=True)
-    restore.add_argument('--version', required=True, metavar='VERSION')
-    restore.add_argument('--to', required=True, metavar='ABS_PATH')
-    restore.add_argument('--replace', action='store_true')
+    restore.add_argument('--target', choices=('google', 'proton'), required=True,
+                         help='destinazione da cui recuperare il file')
+    restore.add_argument('--area', choices=('plain', 'private'), required=True,
+                         help='area in cui si trova la versione')
+    restore.add_argument('--version', required=True, metavar='VERSION',
+                         help='current o ID di history restituito da versions')
+    restore.add_argument('--to', required=True, metavar='ABS_PATH',
+                         help='percorso locale assoluto di destinazione')
+    restore.add_argument('--replace', action='store_true', help='sostituisce un file locale già presente')
     restore.add_argument('--links', action='store_true', help='ricrea un .rclonelink come collegamento simbolico')
-    restore.add_argument('--json', action='store_true')
+    restore.add_argument('--json', action='store_true', help='stampa il risultato in JSON')
     verify = commands.add_parser('verify', help='confronta le sorgenti locali attuali con current nel cloud')
-    verify.add_argument('--target', choices=('google', 'proton', 'all'), required=True)
-    verify.add_argument('--area', choices=('plain', 'private', 'all'), default='all')
+    verify.add_argument('--target', choices=('google', 'proton', 'all'), required=True,
+                        help='destinazione da confrontare')
+    verify.add_argument('--area', choices=('plain', 'private', 'all'), default='all',
+                        help='area da confrontare (predefinita: all)')
     verify.add_argument('--download', action='store_true', help='legge i dati remoti per confrontarli')
-    verify.add_argument('--json', action='store_true')
+    verify.add_argument('--json', action='store_true', help='stampa il confronto in JSON')
     return parser
 
 
@@ -1858,6 +2446,8 @@ def main(argv: list[str] | None = None) -> int:
             return restore_operation(args, config, home)
         if args.command == 'verify':
             return verify_operation(args, config, home)
+        if args.command == 'mount':
+            return mount_operation(args, config, home)
         if args.command == "init":
             files = init_config(config, home)
             print("Configurazione inizializzata. Nessun percorso incluso e nessun accesso cloud.")
@@ -1960,7 +2550,7 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "json", False):
             print(json.dumps({"scope": "operation-error", "ok": False, "errors": [str(exc)]}, ensure_ascii=False))
         else:
-            print(f"ERRORE: {exc}", file=sys.stderr)
+            print(f'{terminal_style("ERRORE:", "1;31", sys.stderr)} {exc}', file=sys.stderr)
         return 1 if isinstance(exc, TransportError) else 2
 
 

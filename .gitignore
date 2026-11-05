@@ -8,3 +8,5 @@
 .cache/
 .zcompdump*
 .zsh/.zcompdump*
+
+home/.config/macbackup/

@@ -1,8 +1,0 @@
-# File e directory con questi nomi richiedono un'inclusione esatta.
-.env
-.env.*
-node_modules
-.venv
-venv
-myenv
-.git

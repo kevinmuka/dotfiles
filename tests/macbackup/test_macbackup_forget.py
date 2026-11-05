@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'home/.config/scripts/macbackup'
+SCRIPT = Path(__file__).resolve().parents[2] / 'home/.config/scripts/macbackup'
 
 
 @unittest.skipUnless(shutil.which('rclone'), 'rclone is needed')
@@ -125,17 +125,36 @@ class ForgetTests(unittest.TestCase):
 
     def test_subtree_is_boundary_safe_and_includes_icon_sidecars(self):
         current = self.make_plain()
+        old = self.make_plain('history/run-one')
         sibling = self.make_plain(name=str(self.original.parent) + '-other/file.txt')
         icon = self.plain / 'macos-icons/current' / str(self.original.parent).lstrip('/') / 'icon.json'
         icon.parent.mkdir(parents=True)
         icon.write_text('{"synthetic":true}')
         plan = self.plan(str(self.original.parent) + '/')
-        self.assertEqual(plan['count'], 2)
+        self.assertEqual(plan['count'], 3)
         self.assertEqual({item['kind'] for item in plan['items']}, {'files', 'macos-icons'})
         result = self.apply(plan)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)['empty_directory_roots_removed']), 3)
+        self.assertFalse(current.parent.exists())
+        self.assertFalse(old.parent.exists())
+        self.assertFalse(icon.parent.exists())
+        self.assertTrue(sibling.exists())
+
+    def test_empty_directory_only_can_be_planned_and_removed(self):
+        current = self.plain / 'current' / str(self.original.parent).lstrip('/')
+        history = self.plain / 'history/run-one' / str(self.original.parent).lstrip('/')
+        current.mkdir(parents=True)
+        history.mkdir(parents=True)
+        sibling = self.make_plain(name=str(self.original.parent) + '-other/file.txt')
+        plan = self.plan(str(self.original.parent) + '/')
+        self.assertEqual(plan['count'], 0)
+        self.assertEqual(len(plan['cleanup_roots']), 2)
+        self.assertIsNotNone(plan['plan_id'])
+        result = self.apply(plan)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(current.exists())
-        self.assertFalse(icon.exists())
+        self.assertFalse(history.exists())
         self.assertTrue(sibling.exists())
 
     def test_private_crypt_copy_is_deleted_without_touching_plain(self):
@@ -152,6 +171,24 @@ class ForgetTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(plain.exists())
         self.assertEqual(self.plan(area='private')['count'], 0)
+
+    def test_private_crypt_directory_cleanup_preserves_plain(self):
+        plain = self.make_plain()
+        source = self.base / 'private-source'
+        source.write_text('synthetic private content')
+        remote = 'localcrypt:current/' + str(self.original).lstrip('/')
+        subprocess.run(['rclone', 'copyto', str(source), remote], env=self.env,
+                       capture_output=True, text=True, check=True)
+        plan = self.plan(str(self.original.parent) + '/', area='private')
+        self.assertEqual(plan['count'], 1)
+        result = self.apply(plan)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(plain.exists())
+        listing = subprocess.run(['rclone', 'lsjson', 'localcrypt:current/' +
+                                  str(self.original.parent.parent).lstrip('/')],
+                                 env=self.env, capture_output=True, text=True, check=True)
+        self.assertNotIn(self.original.parent.name,
+                         [item['Name'] for item in json.loads(listing.stdout)])
 
     def test_permanent_proton_and_broad_directory_without_slash_are_rejected(self):
         self.make_plain()

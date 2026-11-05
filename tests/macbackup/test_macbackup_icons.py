@@ -10,7 +10,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-import test_macbackup_transport as transport
+from . import test_macbackup_transport as transport
 
 M = transport.M
 
@@ -84,14 +84,19 @@ class IconTests(unittest.TestCase):
         by_kind = {item['kind']: item for item in json.loads(changed.stdout)['results']}
         self.assertEqual(len(by_kind['macos-icons']['different']), 1)
 
-    def test_new_exclusion_retains_old_icon_snapshot(self):
+    def test_new_exclusion_archives_old_icon_snapshot(self):
         icon = self.icon()
         self.run_backup()
         original = self.icon_file().read_bytes()
         self.attr(icon, 'com.apple.ResourceFork', b'excluded icon v2')
         (self.config / 'exclude-paths.txt').write_text(str(self.source) + '\n')
-        self.run_backup()
-        self.assertEqual(original, self.icon_file().read_bytes())
+        result = self.run_backup()
+        self.assertFalse(self.icon_file().exists())
+        history = self.base / 'plain-store/MacBackup/plain/macos-icons/history'
+        self.assertEqual(next(history.rglob('icon.json')).read_bytes(), original)
+        row = next(item for item in result['results'] if item['kind'] == 'macos-icons')
+        self.assertEqual(row['archive_policy'], 1)
+        self.assertEqual(row['policy_archived'][0]['reason'], 'Esclusione assoluta.')
 
     def test_deleted_icon_is_archived(self):
         icon = self.icon()
