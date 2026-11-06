@@ -20,6 +20,35 @@ SCRIPT = Path(__file__).resolve().parents[2] / "home/.config/scripts/macbackup"
 M = runpy.run_path(str(SCRIPT))
 
 
+class VerifyProgressTests(unittest.TestCase):
+    def test_report_progress_counts_only_complete_entries_without_double_counting(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'combined.txt'
+            report.write_bytes(b'')
+            terminal = Terminal()
+            with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                    'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                    'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+                pulse = M['MountPulse']('Verifying synthetic/private/files', 2)
+                pulse.report_path = report
+                report.write_bytes(b'= first')
+                pulse.draw()
+                self.assertIn('\x1b[2;90mChecked 0/2\x1b[0m', terminal.getvalue())
+                with report.open('ab') as stream:
+                    stream.write(b'\n* second\n')
+                pulse.draw()
+                self.assertIn('Checked 2/2', terminal.getvalue())
+                pulse.draw()
+                self.assertEqual(pulse.completed, 2)
+            plain = io.StringIO()
+            with patch.object(sys, 'stderr', plain):
+                self.assertEqual(M['terminal_style']('Checked 2/2', '2;90', plain), 'Checked 2/2')
+
+
 @unittest.skipUnless(shutil.which("rclone"), "rclone is needed for local round trips")
 class TransportTests(unittest.TestCase):
     def setUp(self):

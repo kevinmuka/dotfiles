@@ -6,6 +6,10 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-06 — verification progress (0.12.8)
+
+- Interactive `verify` displays completed file checks against the selected count for each area and kind. The count includes differences and errors; it may pause during remote listing or large-file checks. JSON fields and verification semantics are unchanged.
+
 ## 2026-11-06 — English primary documentation
 
 - Rewrote `README.md` as the primary English user manual and retained the earlier Italian manual in `README.it.md`. The technical changelog is maintained in English only. Command examples remain generic, with no personal configuration or backup inventory.

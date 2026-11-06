@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.12.7"
+VERSION = "0.12.8"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -1676,12 +1676,16 @@ def issue_line(label: str, message: str, kind: str) -> str:
 
 
 class MountPulse:
-    """An indeterminate bar: inventory size and mount time are not known ahead."""
+    """An activity bar, or a file-count bar when the caller knows the total."""
 
-    def __init__(self, label: str):
+    def __init__(self, label: str, total: int | None = None):
         self.label = label
         self.started = time.monotonic()
         self.interactive = sys.stderr.isatty()
+        self.total = total
+        self.completed = 0
+        self.report_path = None
+        self.report_offset = 0
         if not self.interactive:
             print(f'{label}: in corso...', file=sys.stderr, flush=True)
 
@@ -1689,12 +1693,28 @@ class MountPulse:
         if not self.interactive:
             return
         width, block = 22, 5
-        offset = int((time.monotonic() - self.started) * 5) % (width + block)
-        bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
-                      for index in range(width))
+        if self.report_path is not None:
+            try:
+                with self.report_path.open('rb') as stream:
+                    stream.seek(self.report_offset)
+                    new_data = stream.read()
+                    self.report_offset = stream.tell()
+                self.completed += new_data.count(b'\n')
+            except FileNotFoundError:
+                pass
+        if self.total is None:
+            offset = int((time.monotonic() - self.started) * 5) % (width + block)
+            bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
+                          for index in range(width))
+        else:
+            filled = width * min(self.completed, self.total) // max(self.total, 1)
+            bar = '#' * filled + '.' * (width - filled)
         elapsed = int(time.monotonic() - self.started)
         detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
                   if metadata_bytes is not None else '')
+        if self.total is not None:
+            count = f'{"Checked" if macbackup_language() == "en" else "Verificati"} {self.completed}/{self.total}'
+            detail += '  ' + terminal_style(count, '2;90', sys.stderr)
         title = terminal_style(self.label, '1;36', sys.stderr)
         progress = terminal_style(f'[{bar}]', '34', sys.stderr)
         sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}'))
@@ -1722,13 +1742,13 @@ def mount_input_wait(input_fd: int | None, timeout: float) -> None:
 
 
 @contextmanager
-def operation_activity(label: str):
-    """Show an indeterminate TTY bar and discard input during a long phase."""
+def operation_activity(label: str, total: int | None = None):
+    """Show a TTY progress bar and discard input during a long phase."""
     if not sys.stderr.isatty():
         yield None
         return
     with discard_mount_input() as input_fd:
-        pulse = MountPulse(label)
+        pulse = MountPulse(label, total)
         stopped = threading.Event()
 
         def animate() -> None:
@@ -2913,7 +2933,7 @@ def restore_operation(args, config: Path, home: Path) -> int:
 
 def verify_report(source: str, destination: str, names: list[str],
                   state: Path, private: bool, download: bool,
-                  size_only: bool = False) -> dict:
+                  size_only: bool = False, pulse: MountPulse | None = None) -> dict:
     if not names:
         return {'selected': 0, 'matched': 0, 'different': [], 'missing': [], 'errors': []}
     if size_only:
@@ -2933,6 +2953,8 @@ def verify_report(source: str, destination: str, names: list[str],
         for name in names:
             if name not in remote:
                 missing.append(name)
+                if pulse is not None:
+                    pulse.completed += 1
                 continue
             try:
                 link_path = Path('/') / name[:-len('.rclonelink')]
@@ -2942,9 +2964,13 @@ def verify_report(source: str, destination: str, names: list[str],
                     local_size = (Path(source) / name).stat().st_size
             except OSError:
                 errors.append(name)
+                if pulse is not None:
+                    pulse.completed += 1
                 continue
             if local_size != remote[name]:
                 different.append(name)
+            if pulse is not None:
+                pulse.completed += 1
         return {'selected': len(names), 'matched': len(names) - len(missing) - len(different) - len(errors),
                 'different': different, 'missing': missing, 'errors': errors}
     with tempfile.TemporaryDirectory(prefix='verify-', dir=state) as directory:
@@ -2952,6 +2978,8 @@ def verify_report(source: str, destination: str, names: list[str],
         manifest = write_manifest(directory, names)
         report = directory / 'combined.txt'
         report.touch(mode=0o600)
+        if pulse is not None:
+            pulse.report_path = report
         command = 'check' if download or size_only or not private else 'cryptcheck'
         options = [command, source, destination, '--files-from0', str(manifest),
                    '--links', '--one-way', '--combined', str(report), '--log-level', 'ERROR']
@@ -2997,10 +3025,10 @@ def verify_operation(args, config: Path, home: Path) -> int:
                     continue
                 local = sorted(selected_names(scan, area))
                 try:
-                    with operation_activity(f'Verifica {target}/{area}/files'):
+                    with operation_activity(f'Verifica {target}/{area}/files', len(local)) as pulse:
                         checked = verify_report('/', remote_join(root, 'current'), local,
                                                 policy.state_dir, area == 'private', args.download,
-                                                args.size_only)
+                                                args.size_only, pulse)
                     results.append({'target': target, 'area': area, 'kind': 'files',
                                     'method': ('size-only' if args.size_only else 'download' if args.download else
                                                'cryptcheck' if area == 'private' else 'check'),
@@ -3024,11 +3052,11 @@ def verify_operation(args, config: Path, home: Path) -> int:
                                     json.dump(icon_snapshot(entry), stream, sort_keys=True,
                                               ensure_ascii=False, indent=2)
                                 names.append(relative)
-                            with operation_activity(f'Verifica {target}/{area}/macos-icons'):
+                            with operation_activity(f'Verifica {target}/{area}/macos-icons', len(names)) as pulse:
                                 checked = verify_report(str(source),
                                     remote_join(remote_join(root, 'macos-icons'), 'current'),
                                     sorted(names), policy.state_dir, area == 'private', args.download,
-                                    args.size_only)
+                                    args.size_only, pulse)
                             results.append({'target': target, 'area': area, 'kind': 'macos-icons',
                                             'method': ('size-only' if args.size_only else 'download' if args.download else
                                                        'cryptcheck' if area == 'private' else 'check'),
