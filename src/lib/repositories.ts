@@ -128,11 +128,12 @@ export async function renderMarkdown(key: RepositoryKey, path: string, source: s
 }
 
 export async function renderCode(path: string, source: string) {
+  const visibleSource = source.replace(/(?:\r\n|[\r\n])$/, '');
   const ext = path.split('.').pop()?.toLowerCase();
   const language = ({ sh: 'bash', zsh: 'bash', bash: 'bash', lua: 'lua', json: 'json', jsonc: 'jsonc', yaml: 'yaml', yml: 'yaml', toml: 'toml', js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', css: 'css', html: 'html', xml: 'xml', py: 'python', rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', java: 'java', sql: 'sql', md: 'markdown' } as Record<string, string>)[ext || ''] || 'text';
   try {
-    return await codeToHtml(source, { lang: language, themes: { light: 'github-light', dark: 'github-dark' } });
+    return await codeToHtml(visibleSource, { lang: language, themes: { light: 'github-light', dark: 'github-dark' } });
   } catch {
-    return await codeToHtml(source, { lang: 'text', themes: { light: 'github-light', dark: 'github-dark' } });
+    return await codeToHtml(visibleSource, { lang: 'text', themes: { light: 'github-light', dark: 'github-dark' } });
   }
 }
