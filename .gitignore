@@ -10,3 +10,4 @@
 .zsh/.zcompdump*
 
 home/.config/macbackup/
+docs/MACBACKUP_TODO.md
