@@ -81,7 +81,7 @@ class TransportTests(unittest.TestCase):
         result = self.cli("preview", "--target", "google", "--json")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(self.current.exists())
-        self.assertIn("Anteprima", json.loads(result.stdout)["note"])
+        self.assertIn("Preview", json.loads(result.stdout)["note"])
 
     def test_backup_excludes_env_and_keeps_absolute_path_structure(self):
         self.run_backup()
@@ -103,7 +103,7 @@ class TransportTests(unittest.TestCase):
         result = self.cli('check', '--remote', '--target', 'google')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(str(self.normal), result.stderr)
-        self.assertIn('conflitto fra plain e private', result.stderr)
+        self.assertIn('conflicting between plain and private', result.stderr)
         self.assertTrue(self.remote_path(self.normal).exists())
 
     def test_remote_check_rejects_file_at_private_directory_path(self):
@@ -137,9 +137,9 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(plain['transferred_bytes'], self.normal.stat().st_size)
         self.assertTrue(plain['counts_complete'])
         self.assertEqual(plain['server_side_moves'], 0)
-        self.assertIn('Dati       [', result.stderr)
-        self.assertIn('VELOCITÀ', result.stderr)
-        self.assertIn('Avvio google/plain/files:', result.stderr)
+        self.assertIn('Data       [', result.stderr)
+        self.assertIn('SPEED', result.stderr)
+        self.assertIn('Starting google/plain/files:', result.stderr)
 
     def test_real_interrupted_progress_retains_latest_stats(self):
         large = self.source / 'large.bin'
@@ -174,14 +174,14 @@ except module['TransferInterrupted'] as exc:
         self.assertIsInstance(metrics['transferred_bytes'], int)
         self.assertGreater(metrics['transferred_bytes'], 0)
         self.assertFalse(metrics['counts_complete'])
-        self.assertIn('Dati       [', stderr)
-        self.assertIn('Tempo 2s', stderr)
+        self.assertIn('Data       [', stderr)
+        self.assertIn('Elapsed 2s', stderr)
 
     def test_run_text_summary_distinguishes_selected_and_transferred(self):
         result = self.cli('run', '--target', 'google')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('selezionati 1', result.stdout)
-        self.assertIn('Trasferiti 1 file, 19 B', result.stdout)
+        self.assertIn('selected 1', result.stdout)
+        self.assertIn('Transferred 1 file, 19 B', result.stdout)
 
     def test_active_directory_groups_at_requested_home_depth(self):
         stats = {'transferring': [
@@ -253,11 +253,11 @@ except module['TransferInterrupted'] as exc:
             self.assertEqual(result['results'][0]['renamed_files'], 2)
             self.assertFalse(result['results'][0]['counts_complete'])
             state = self.home / '.local/state/macbackup/last-run.json'
-            self.assertIn('Interrotto', state.read_text())
+            self.assertIn('Interrupted', state.read_text())
             self.assertNotIn('\\u2019', state.read_text())
             status = self.cli('status')
-            self.assertIn("dall'utente", status.stdout)
-            self.assertIn('già', status.stdout)
+            self.assertIn('by user', status.stdout)
+            self.assertIn('already', status.stdout)
             self.assertNotIn('\\u00e0', status.stdout)
         finally:
             script_globals['perform_sync'] = original
@@ -345,13 +345,13 @@ except module['TransferInterrupted'] as exc:
         planned = next(row for row in json.loads(preview.stdout)['results']
                        if row['area'] == 'plain' and row['kind'] == 'files')
         self.assertEqual(planned['archive_policy'], 1)
-        self.assertEqual(planned['policy_archives'][0]['reason'], 'Esclusione assoluta.')
+        self.assertEqual(planned['policy_archives'][0]['reason'], 'Absolute exclusion.')
         self.assertTrue(self.remote_path(self.normal).exists())
         result = self.run_backup()
         self.assertFalse(self.remote_path(self.normal).exists())
         self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('normal.txt')).read_text(),
                          'synthetic normal v1')
-        self.assertEqual(result['results'][0]['policy_archived'][0]['reason'], 'Esclusione assoluta.')
+        self.assertEqual(result['results'][0]['policy_archived'][0]['reason'], 'Absolute exclusion.')
         self.rules(excluded=False)
         self.run_backup()
         self.assertEqual(self.remote_path(self.normal).read_text(), 'changed but excluded')
@@ -511,7 +511,7 @@ except module['TransferInterrupted'] as exc:
         self.assertEqual(changed.returncode, 1, changed.stdout + changed.stderr)
         data = json.loads(changed.stdout)
         self.assertEqual(len(data['results'][0]['different']), 1)
-        self.assertIn('non prova corruzione', data['note'])
+        self.assertIn('does not prove corruption', data['note'])
 
     def test_verify_before_first_backup_reports_missing_copy(self):
         checked = self.cli('verify', '--target', 'google', '--area', 'plain', '--json')
@@ -557,7 +557,7 @@ except module['TransferInterrupted'] as exc:
             with contextlib.redirect_stderr(io.StringIO()) as stderr:
                 result = M['main'](['--config-dir', str(self.config), 'verify', '--target', 'google'])
         self.assertEqual(result, 130)
-        self.assertIn('Interrotto', stderr.getvalue())
+        self.assertIn('Interrupted', stderr.getvalue())
         self.assertNotIn('Traceback', stderr.getvalue())
 
     def test_deletion_threshold_stops_before_any_transfer(self):
@@ -599,7 +599,7 @@ except module['TransferInterrupted'] as exc:
         self.assertEqual(next((self.base / 'plain-store/MacBackup/plain/history').rglob('extra.txt')).read_text(),
                          'synthetic extra')
         row = next(item for item in result['results'] if item['area'] == 'plain' and item['kind'] == 'files')
-        self.assertEqual(row['policy_archived'][0]['reason'], 'Percorso non selezionato.')
+        self.assertEqual(row['policy_archived'][0]['reason'], 'Path not selected.')
 
     def test_removing_all_inclusions_archives_existing_current(self):
         self.run_backup()

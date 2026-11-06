@@ -96,7 +96,7 @@ class IconTests(unittest.TestCase):
         self.assertEqual(next(history.rglob('icon.json')).read_bytes(), original)
         row = next(item for item in result['results'] if item['kind'] == 'macos-icons')
         self.assertEqual(row['archive_policy'], 1)
-        self.assertEqual(row['policy_archived'][0]['reason'], 'Esclusione assoluta.')
+        self.assertEqual(row['policy_archived'][0]['reason'], 'Absolute exclusion.')
 
     def test_deleted_icon_is_archived(self):
         icon = self.icon()
@@ -176,7 +176,7 @@ class IconTests(unittest.TestCase):
         (self.source / M['FINDER_ICON']).symlink_to(self.secret)
         result = self.cli('check', '--json')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('file regolare', result.stdout)
+        self.assertIn('regular file', result.stdout)
 
     def test_malformed_snapshot_does_not_write_destination(self):
         file = self.base / 'bad.json'

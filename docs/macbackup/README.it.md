@@ -1,8 +1,12 @@
 # macbackup: manuale d'uso
 
+**Versione di macbackup documentata: `0.12.8`.** Verifica la versione installata con `macbackup --version`.
+
+Questa è la traduzione italiana del [manuale principale in inglese](README.md). In caso di differenze, fa fede la versione inglese, da aggiornare per prima quando cambia il programma.
+
 `macbackup` seleziona file e directory del Mac, li copia tramite rclone e separa i dati consultabili (`plain`) da quelli cifrati con rclone crypt (`private`). La struttura remota conserva i percorsi originali e archivia le copie precedenti in `history`. Non è un backup avviabile del Mac né uno snapshot consistente di applicazioni in esecuzione.
 
-Questo manuale descrive il comportamento del programma e usa **esempi**, non la configurazione di un computer specifico. Per vedere la propria selezione usare `macbackup check` e `macbackup preview --local`; per l'ultimo trasferimento usare `macbackup status`. Cronologia, decisioni e collaudi sono in [MACBACKUP_CHANGELOG.md](MACBACKUP_CHANGELOG.md).
+Questo manuale descrive il comportamento del programma e usa **esempi**, non la configurazione di un computer specifico. Per vedere la propria selezione usare `macbackup check` e `macbackup preview --local`; per l'ultimo trasferimento usare `macbackup status`. Cronologia, decisioni e collaudi sono in [CHANGELOG.md](CHANGELOG.md).
 
 ## 1. Installazione e primo controllo
 
@@ -16,6 +20,18 @@ macbackup preview --local
 ```
 
 `init` crea i quattro elenchi e `settings.toml` senza inclusioni attive né destinazioni abilitate; se trova anche solo un file di configurazione già presente, si ferma senza sovrascriverlo. I file nuovi hanno permessi 600 e la directory nuova 700. Gli elenchi e lo stato possono contenere nomi sensibili: proteggerli e non aggiungerli a Git senza una revisione esplicita. La configurazione rclone e le chiavi crypt richiedono una copia sicura indipendente dal Mac.
+
+### Lingua dell'interfaccia
+
+I messaggi del terminale, le barre di avanzamento, `--help` e le descrizioni dell'autocompletamento Zsh sono in **inglese** per impostazione predefinita. Per usare l'italiano, impostare la variabile d'ambiente `MACBACKUP_LANG=it`:
+
+```sh
+MACBACKUP_LANG=it macbackup check           # solo questo comando
+export MACBACKUP_LANG=it                    # anche i comandi successivi
+source ~/.zsh/integrations/macbackup.zsh    # aggiorna l'autocompletamento nella shell aperta
+```
+
+Per tornare all'inglese, eseguire `unset MACBACKUP_LANG` e ricaricare l'integrazione Zsh con lo stesso comando `source`. `MACBACKUP_LANG=en` seleziona esplicitamente l'inglese. La scelta non cambia i comandi, le flag, i nomi dei campi JSON, i percorsi o le regole di backup. Le stringhe esplicative dei nuovi resoconti seguono la lingua attiva; `status` mostra i resoconti già salvati nella lingua originale, senza modificarli. La lingua dell'autocompletamento viene scelta quando si carica l'integrazione Zsh, quindi cambiare la variabile in una shell già aperta richiede il nuovo `source`.
 
 ## 2. Posizione sul Mac e rapporto con Git
 
@@ -435,6 +451,8 @@ macbackup verify --target google --area private --download
 
 Il comando scansiona le sorgenti locali selezionate e confronta i file ammessi con `current` nel servizio richiesto. Non modifica sorgenti o cloud. La modalità ordinaria usa `rclone check` per l'area normale e `rclone cryptcheck` per l'area cifrata; entrambe richiedono una corrispondenza completa nel rapporto di rclone. `--download` usa `rclone check --download` e legge il contenuto remoto per confrontarlo con quello locale: può generare molto traffico e richiedere molto tempo. Per la cartella normale Google rclone usa gli hash comuni quando disponibili; la verifica cifrata usa il metodo apposito di cryptcheck. La verifica comprende anche gli snapshot correnti delle icone Finder che macbackup genera dalle sorgenti selezionate.
 
+In un terminale interattivo, ogni fase mostra `Verificati N/totale`. Il totale comprende tutti i file selezionati nell'area, anche quelli nelle sottocartelle delle directory incluse. `N` conta i risultati completati, compresi file corrispondenti, diversi, mancanti o con errore; non indica quanti file corrispondono. Il contatore può restare a zero mentre rclone prepara l'inventario remoto o verifica un file grande; i risultati possono comparire a gruppi quando rclone scrive il rapporto. Fa fede il risultato finale, e una verifica interrotta non certifica i file restanti. Con `--area private` si verifica soltanto l'area privata.
+
 `--size-only` legge una volta l'inventario di `current` per area e confronta percorsi e dimensioni locali, anche per l'area privata. Non legge né confronta il contenuto dei file e quindi non dimostra che i byte siano identici. La durata dipende comunque dalla scansione locale e dalla lettura dell'inventario del servizio. Non si combina con `--download`. La verifica completa dell'area privata richiede di leggere i file locali e cifrarli nuovamente per confrontare gli hash; su molte migliaia di file può durare ore. `Ctrl-C` interrompe il comando con codice 130 senza traceback; una verifica interrotta non produce un risultato completo.
 
 Il risultato separa file corrispondenti, diversi, mancanti e errori di lettura per servizio, area e tipo. Una differenza fra `current` e il file locale attuale **non prova** che il backup sia corrotto: il file potrebbe essere stato modificato dopo la copia. Il comando non verifica gli storici, le copie conservate dopo un'esclusione, l'intero insieme dei metadati macOS o le revisioni native del provider. Senza un manifesto dei contenuti registrato al momento della run, non certifica il contenuto di un vecchio file confrontandolo con l'originale attuale. Le destinazioni possono essere disabilitate in `settings.toml`, purché i remote rclone esistano.
@@ -485,7 +503,7 @@ Il risultato distingue la rimozione dalle cartelle attive e la modalità richies
 
 ### 6.11 Autocompletamento Zsh
 
-Nei dotfiles sono presenti `home/.zsh/completions/_macbackup` e `home/.zsh/integrations/macbackup.zsh`. L'integrazione propone comandi, flag, valori di `--target` e `--area`, e percorsi. Se la shell è già aperta dopo un aggiornamento, aprire un nuovo terminale oppure ricaricare l'integrazione:
+Nei dotfiles sono presenti `home/.zsh/completions/_macbackup` (inglese), `home/.zsh/completions/_macbackup_it` (italiano) e `home/.zsh/integrations/macbackup.zsh`. L'integrazione propone comandi, flag, valori di `--target` e `--area`, e percorsi. Se la shell è già aperta dopo un aggiornamento, aprire un nuovo terminale oppure ricaricare l'integrazione:
 
 ```sh
 source "$HOME/.zsh/integrations/macbackup.zsh"

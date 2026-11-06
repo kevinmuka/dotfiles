@@ -101,8 +101,8 @@ class MountTests(unittest.TestCase):
         output = terminal.getvalue()
         self.assertRegex(output, r'\[[#.]{22}\]')
         self.assertIn('\x1b[1;36m', output)
-        self.assertIn('metadati 1.0 MiB', output)
-        self.assertIn('12 voci lette', output)
+        self.assertIn('metadata 1.0 MiB', output)
+        self.assertIn('12 entries read', output)
         self.assertRegex(output, r'\(\d+s\)')
 
     def test_mount_progress_respects_no_color_and_redirected_output(self):
@@ -162,7 +162,7 @@ class MountTests(unittest.TestCase):
         self.assertEqual(result, 0)
         process.terminate.assert_called_once()
         point = self.home / 'Desktop/google-plain'
-        self.assertIn(f'Volume smontato: {point}', output.getvalue())
+        self.assertIn(f'Volume unmounted: {point}', output.getvalue())
         self.assertFalse(point.exists())
         decision = M['Policy'](self.config, self.home).decide(point / 'current/file.txt')
         self.assertEqual(decision.action, 'skip')

@@ -13,8 +13,10 @@
   if [[ -t 1 && "$TERM" != dumb && -z "$NO_COLOR" ]]; then
     zstyle ':completion:*:*:macbackup:*' list-colors '=(#b)([a-z-]#)(*)=0=1;34=2'
   fi
-  autoload -Uz _macbackup
+  local completion_function=_macbackup
+  [[ ${MACBACKUP_LANG:l} == it ]] && completion_function=_macbackup_it
+  autoload -Uz "$completion_function"
   if (( $+functions[compdef] )); then
-    compdef _macbackup macbackup
+    compdef "$completion_function" macbackup
   fi
 }

@@ -37,7 +37,7 @@ class UiTests(unittest.TestCase):
         while select.select([master], [], [], 0)[0]:
             output += os.read(master, 4096)
         self.assertIn(b'Prova scansione', output)
-        self.assertIn(b'completato', output)
+        self.assertIn(b'complete', output)
         self.assertNotIn(b'unwanted command', output)
 
     def test_color_is_only_for_supported_terminals(self):
@@ -58,21 +58,21 @@ class UiTests(unittest.TestCase):
             def isatty(self):
                 return True
 
-        lines = ['macbackup  google/plain', 'VELOCITÀ  1.0 MiB/s',
-                 'File attivi:', '  Users/kevinmuka/Desktop/file.txt',
-                 '    [######------]  1 MB / 2 MB', 'Tasti  [u] Cambia unità',
-                 'Unità attuali: binaria', 'Legenda (fase corrente)',
-                 '  Dati: volume trasferito']
+        lines = ['macbackup  google/plain', 'SPEED  1.0 MiB/s',
+                 'Active files:', '  Users/kevinmuka/Desktop/file.txt',
+                 '    [######------]  1 MB / 2 MB', 'Keys  [u] Switch units',
+                 'Current units: binary', 'Legend (current phase)',
+                 '  Data: transferred volume']
         with patch.dict(os.environ, {'TERM': 'xterm-256color', 'NO_COLOR': '',
                                      'PYTHON_COLORS': ''}):
             rendered = M['styled_progress_lines'](lines, Terminal())
-            self.assertIn('\x1b[1;32mVELOCITÀ\x1b[0m  1.0 MiB/s', rendered)
-            self.assertIn('\x1b[1;36mFile attivi:\x1b[0m', rendered)
+            self.assertIn('\x1b[1;32mSPEED\x1b[0m  1.0 MiB/s', rendered)
+            self.assertIn('\x1b[1;36mActive files:\x1b[0m', rendered)
             self.assertIn('  \x1b[2;90mUsers/kevinmuka/Desktop/file.txt\x1b[0m', rendered)
             self.assertIn('    [######------]  1 MB / 2 MB', rendered)
-            self.assertIn('\x1b[2;90mTasti  [u] Cambia unità\x1b[0m', rendered)
-            self.assertIn('\x1b[2;90mUnità attuali: binaria\x1b[0m', rendered)
-            self.assertIn('\x1b[2;90m  Dati: volume trasferito\x1b[0m', rendered)
+            self.assertIn('\x1b[2;90mKeys  [u] Switch units\x1b[0m', rendered)
+            self.assertIn('\x1b[2;90mCurrent units: binary\x1b[0m', rendered)
+            self.assertIn('\x1b[2;90m  Data: transferred volume\x1b[0m', rendered)
             self.assertEqual(M['styled_progress_lines'](lines, io.StringIO()),
                              '\n'.join(lines))
 

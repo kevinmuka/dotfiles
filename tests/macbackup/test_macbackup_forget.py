@@ -92,7 +92,7 @@ class ForgetTests(unittest.TestCase):
         result = self.apply(plan)
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(current.exists())
-        self.assertIn('cambiate', result.stdout)
+        self.assertIn('changed', result.stdout)
 
     def test_new_matching_history_invalidates_plan_before_deletion(self):
         current = self.make_plain()
@@ -113,7 +113,7 @@ class ForgetTests(unittest.TestCase):
         result = self.apply(plan)
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(current.exists())
-        self.assertIn('scaduto', result.stdout)
+        self.assertIn('expired', result.stdout)
 
     def test_excluded_source_is_still_found(self):
         current = self.make_plain()
@@ -243,7 +243,7 @@ class ForgetTests(unittest.TestCase):
                          [('current', 3), ('run-one', 1)])
         self.assertEqual({item['path'] for group in data['versions'] for item in group['items']},
                          {str(folder), str(self.original), str(other)})
-        self.assertIn('non una fotografia completa', data['note'])
+        self.assertIn('not a full directory snapshot', data['note'])
         detailed = self.invoke('versions', str(folder), '--target', 'google',
                                '--area', 'plain', '--files')
         self.assertEqual(detailed.returncode, 0, detailed.stdout + detailed.stderr)

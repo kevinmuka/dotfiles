@@ -26,7 +26,8 @@ ZSH = shutil.which("zsh")
 
 
 class ZshSession:
-    def __init__(self, home: Path, integration_before_compinit: bool = True):
+    def __init__(self, home: Path, integration_before_compinit: bool = True,
+                 language: str = "en"):
         self.home = home
         self.pending = b""
         (home / ".zsh").symlink_to(REPO / "home/.zsh", target_is_directory=True)
@@ -61,7 +62,8 @@ print -r -- '__MACBACKUP_SETUP_DONE__'
         if pid == 0:
             env = os.environ.copy()
             env.pop('NO_COLOR', None)
-            env.update(HOME=str(home), TERM="xterm-256color", PATH=str(home / "bin") + ":" + env.get("PATH", ""))
+            env.update(HOME=str(home), TERM="xterm-256color", MACBACKUP_LANG=language,
+                       PATH=str(home / "bin") + ":" + env.get("PATH", ""))
             os.execve(ZSH, [ZSH, "-f"], env)
         self.pid = pid
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 180, 0, 0))
@@ -284,8 +286,19 @@ class MacbackupCompletionTests(unittest.TestCase):
                 session.close()
             self.assertFalse(session.canary.exists())
 
+    def test_italian_completion_uses_same_commands_and_flags(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = ZshSession(Path(temp).resolve(), language='it')
+            try:
+                self.assertEqual(session.complete('macbackup vers').strip(), 'macbackup versions')
+                self.assertEqual(session.complete('macbackup verify --size').strip(),
+                                 'macbackup verify --size-only')
+            finally:
+                session.close()
+            self.assertFalse(session.canary.exists())
+
     def test_zsh_files_pass_syntax_check(self):
-        for path in (INTEGRATION, COMPLETION):
+        for path in (INTEGRATION, COMPLETION, COMPLETION.with_name('_macbackup_it')):
             with self.subTest(path=path):
                 result = subprocess.run([ZSH, "-n", str(path)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)

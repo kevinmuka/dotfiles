@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import base64
+import builtins
 from contextlib import contextmanager
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
@@ -32,6 +33,537 @@ import uuid
 
 
 VERSION = "0.12.7"
+
+# The program's stored format and JSON field names are language independent.
+# Keep the original Italian messages as catalog keys so older status files can
+# also be displayed in English without rewriting their contents.
+ITALIAN_TO_ENGLISH = {
+    'ERRORE:': 'ERROR:', 'AVVISO:': 'WARNING:', 'ERRORE': 'ERROR',
+    'Controllo locale completato.': 'Local check complete.',
+    'Controllo locale FALLITO.': 'Local check FAILED.',
+    'Controllo remoto completato.': 'Remote check complete.',
+    'Nessun accesso cloud; nessun file trasferito o cancellato.': 'No cloud access; no files transferred or deleted.',
+    'Nessun percorso selezionato: gli elenchi di inclusione sono vuoti.': 'No paths selected: the inclusion lists are empty.',
+    'Normali:': 'Plain:', 'privati:': 'private:', 'saltati:': 'skipped:',
+    'dimensione selezionata:': 'selected size:',
+    'Icone Finder da conservare separatamente:': 'Finder icons to preserve separately:',
+    'i byte dei resource fork non sono inclusi nella stima.': 'resource fork bytes are not included in the estimate.',
+    'Stato operativo escluso automaticamente.': 'Operational state excluded automatically.',
+    'Punto di montaggio escluso automaticamente.': 'Mountpoint excluded automatically.',
+    'Esclusione assoluta.': 'Absolute exclusion.',
+    'Percorso non selezionato.': 'Path not selected.',
+    'Nome file ignorato dalla policy.': 'Filename ignored by policy.',
+    'Directory antenata protetta: richiede inclusione esatta.': 'Protected parent directory: exact inclusion required.',
+    "Richiede un'inclusione esatta del percorso (explicit-only).": 'Exact path inclusion required (explicit-only).',
+    'Escluso da .gitignore.': 'Excluded by .gitignore.',
+    'Inclusione privata.': 'Private inclusion.',
+    'Directory cifrata per nome.': 'Directory encrypted by name.',
+    'Inclusione normale.': 'Plain inclusion.',
+    'Configurazione rclone selezionata in chiaro: aggiungere il percorso a private-paths.txt o escluderlo.':
+        'rclone configuration selected as plain: add the path to private-paths.txt or exclude it.',
+    'Classificazione locale attuale; nessun accesso cloud. Le copie storiche non sono elencate.':
+        'Current local classification; no cloud access. Historical copies are not listed.',
+    'Classificazione del solo percorso; usare check per controllare l\'intera selezione.':
+        'Classification of this path only; use check to inspect the full selection.',
+    'collegamento; destinazione non attraversata.': 'symlink; target not traversed.',
+    'socket, FIFO o dispositivo saltato.': 'socket, FIFO or device skipped.',
+    'sorgente speciale non supportata.': 'unsupported special source.',
+    'file non leggibile.': 'unreadable file.',
+    'nome riservato alla rappresentazione dei link rclone.': 'name reserved for rclone link representation.',
+    'nome protetto autorizzato ESPLICITAMENTE in chiaro.': 'protected name EXPLICITLY allowed as plain.',
+    'File speciale non supportato.': 'Unsupported special file.',
+    'Stesso file raggiunto come normale e privato:': 'Same file reached as both plain and private:',
+    'alias di un file con nome protetto; serve un\'inclusione esatta anche per questo percorso.':
+        'alias of a protected filename; this path also requires exact inclusion.',
+    'La directory è cambiata durante il controllo.': 'The directory changed during the check.',
+    'Nome non rappresentabile in': 'Name cannot be represented in',
+    'Icon\\r deve essere un file regolare.': 'Icon\\r must be a regular file.',
+    'Scansione locale': 'Local scan', 'Preparazione': 'Preparing',
+    'Ricerca versioni': 'Searching versions', 'Ricerca copie per forget': 'Searching copies for forget',
+    'Ricerca versione da recuperare': 'Searching for version to restore',
+    'Recupero file': 'Restoring file', 'Verifica copia recuperata': 'Checking restored copy',
+    'Verifica piano forget': 'Checking forget plan', 'Controllo copie residue': 'Checking remaining copies',
+    'Analisi layout': 'Analyzing layout', 'Verifica ': 'Verifying ',
+    'Inventario ': 'Inventory ', 'Avvio ': 'Starting ',
+    'in corso...': 'in progress...',
+    ' voci lette': ' entries read', 'metadati ': 'metadata ',
+    'Nessuna parte privata trovata al suo interno.': 'No private subtrees found inside it.',
+    'Collegamento: la destinazione non viene attraversata.': 'Symlink: the target is not traversed.',
+    'Il percorso non esiste attualmente; questa è solo una classificazione.':
+        'The path does not currently exist; this is only a classification.',
+    'Regola:': 'Rule:', 'Pattern protetto:': 'Protected pattern:',
+    'inclusione esatta:': 'exact inclusion:',
+    'Configurazione inizializzata.': 'Configuration initialized.',
+    'Nessun percorso incluso e nessun accesso cloud.': 'No paths included and no cloud access.',
+    'Nessuna run registrata. Nessun backup certificato.': 'No run recorded. No backup certified.',
+    'Interrotto dall’utente.': 'Interrupted by user.',
+    "Interrotto dall'utente; i file già caricati restano sul cloud.":
+        'Interrupted by user; files already uploaded remain in the cloud.',
+    "Interrotto dall'utente; alcune copie possono essere già state rimosse.":
+        'Interrupted by user; some copies may already have been removed.',
+    'Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.':
+        'Remote access and types checked; inventories read without changing the cloud.',
+    'Anteprima, nessuna modifica cloud.': 'Preview; no cloud changes.',
+    'Esiti distinti per destinazione e area.': 'Results separated by target and area.',
+    'Trasferimenti: conteggio non disponibile.': 'Transfers: count unavailable.',
+    'Archiviati per policy:': 'Archived due to policy:',
+    'Spostamenti sul cloud:': 'Server-side moves:',
+    'Trasferiti ': 'Transferred ', 'controllati ': 'checked ',
+    'selezionati ': 'selected ', 'da archiviare per cancellazione ': 'to archive after local deletion ',
+    'da archiviare per policy ': 'to archive due to policy ',
+    'una run si fermerebbe prima dei trasferimenti.': 'a run would stop before transfers.',
+    ' supera max_delete=': ' exceeds max_delete=',
+    'La selezione locale contiene errori. Eseguire macbackup check.':
+        'The local selection has errors. Run macbackup check.',
+    'La selezione locale contiene errori: eseguire macbackup check.':
+        'The local selection has errors: run macbackup check.',
+    'Nessuna sorgente selezionata né copia corrente da archiviare: operazione rclone bloccata.':
+        'No source selected and no current copy to archive: rclone operation blocked.',
+    'Verifica cifrata incompleta o con errori; nessun aggiornamento dell\'area privata.':
+        'Encrypted check incomplete or failed; private area not updated.',
+    'Verifica cifrata incoerente; operazione bloccata.': 'Inconsistent encrypted check; operation blocked.',
+    'Non tutti i file privati sono stati verificati; operazione bloccata.':
+        'Not all private files were checked; operation blocked.',
+    'current contiene ': 'current contains ',
+    ' percorsi in conflitto fra plain e private: ': ' paths conflicting between plain and private: ',
+    'Il volume unificato non è stato montato; consultare le aree con --area plain e --area private.':
+        'The merged volume was not mounted; inspect the areas with --area plain and --area private.',
+    'Le due copie restano intatte; consultare le aree separatamente e risolvere il conflitto.':
+        'Both copies remain intact; inspect the areas separately and resolve the conflict.',
+    'Il cloud ha restituito un percorso non valido; operazione bloccata.':
+        'The cloud returned an invalid path; operation blocked.',
+    'Il cloud contiene percorsi duplicati; risolverli prima del backup.':
+        'The cloud contains duplicate paths; resolve them before backup.',
+    'Il cloud ha restituito un tipo di percorso non valido; operazione bloccata.':
+        'The cloud returned an invalid path type; operation blocked.',
+    'Il cloud ha restituito un percorso non valido; montaggio bloccato.':
+        'The cloud returned an invalid path; mount blocked.',
+    'Montato ': 'Mounted ', 'Volume smontato:': 'Volume unmounted:',
+    'Montaggio ': 'Mount ', 'Montaggio terminato con codice ': 'Mount exited with code ',
+    'Smontaggio in corso...': 'Unmounting...',
+    'Lascia questo terminale aperto; premi Ctrl-C o espelli il volume dal Finder (⌘E).':
+        'Keep this terminal open; press Ctrl-C or eject the volume in Finder (⌘E).',
+    ' in sola lettura:': ' read-only at:',
+    ' già montato.': ' already mounted.',
+    ' occorre una directory vuota.': ' requires an empty directory.',
+    ' il montaggio si sovrappone a una sorgente del backup.': ' the mount overlaps a backup source.',
+    ' il percorso del montaggio attraversa un collegamento simbolico.':
+        ' the mount path crosses a symbolic link.',
+    ' non si è smontato; controllare con mount.': ' did not unmount; inspect with mount.',
+    'La directory di stato non può essere un collegamento.': 'The state directory cannot be a symlink.',
+    "Un'altra operazione macbackup è già in corso.": 'Another macbackup operation is already running.',
+    'use_gitignore richiede Git nel PATH.': 'use_gitignore requires Git in PATH.',
+    'Impossibile inizializzare il controllo dei .gitignore: ': 'Could not initialize .gitignore checking: ',
+    'Impossibile avviare il controllo dei .gitignore: ': 'Could not start .gitignore checking: ',
+    'Controllo .gitignore senza risposta da Git.': 'No response from Git during .gitignore checking.',
+    'Controllo .gitignore interrotto: ': '.gitignore checking stopped: ',
+    'Risposta .gitignore incoerente da Git.': 'Inconsistent .gitignore response from Git.',
+    'Impossibile controllare .gitignore: ': 'Could not check .gitignore: ',
+    "Occorre un percorso assoluto senza componenti '..'.": "An absolute path without '..' components is required.",
+    'I percorsi non possono contenere caratteri di controllo.': 'Paths cannot contain control characters.',
+    'Il percorso non è rappresentabile correttamente in UTF-8.': 'The path cannot be represented correctly in UTF-8.',
+    'Impossibile leggere ': 'Could not read ',
+    'spazi iniziali o finali ambigui.': 'ambiguous leading or trailing whitespace.',
+    'Le regole per nome richiedono Python 3.11 o successivo.': 'Name rules require Python 3.11 or later.',
+    'Le operazioni rclone richiedono Python 3.11 o successivo.':
+        'rclone operations require Python 3.11 or later.',
+    'Impossibile leggere settings.toml: ': 'Could not read settings.toml: ',
+    'settings.toml: targets deve essere una tabella.': 'settings.toml: targets must be a table.',
+    'settings.toml: policy deve essere una tabella.': 'settings.toml: policy must be a table.',
+    'settings.toml: private_directory_names richiede nomi letterali di directory.':
+        'settings.toml: private_directory_names requires literal directory names.',
+    'settings.toml: ignored_file_names richiede nomi letterali di file.':
+        'settings.toml: ignored_file_names requires literal file names.',
+    'settings.toml: use_gitignore deve essere true o false.':
+        'settings.toml: use_gitignore must be true or false.',
+    'settings.toml: schema_version deve essere 1.':
+        'settings.toml: schema_version must be 1.',
+    ": ammessi soltanto nomi e '*'; nessun percorso o altro operatore.":
+        ": only names and '*' are allowed; no paths or other operators.",
+    ": la radice '/' non è ammessa.": ": root '/' is not allowed.",
+    'Le icone Finder richiedono macOS.': 'Finder icons require macOS.',
+    'Metadato icona oltre 64 MiB: operazione bloccata.': 'Icon metadata exceeds 64 MiB; operation blocked.',
+    "Il metadato dell'icona è cambiato durante la lettura.": 'Icon metadata changed while being read.',
+    'Impossibile ripristinare il metadato ': 'Could not restore metadata ',
+    "L'icona è stata sostituita dopo la scansione.": 'The icon was replaced after the scan.',
+    'File icona oltre 64 MiB: operazione bloccata.': 'Icon file exceeds 64 MiB; operation blocked.',
+    'File icona cresciuto oltre 64 MiB durante la lettura.': 'Icon file grew beyond 64 MiB while being read.',
+    "L'icona è cambiata durante la lettura.": 'The icon changed while being read.',
+    'FinderInfo non ha la dimensione attesa: operazione bloccata.':
+        'FinderInfo has an unexpected size; operation blocked.',
+    'File di recupero icona troppo grande.': 'Icon restore file is too large.',
+    'Formato di recupero icona non riconosciuto.': 'Unrecognized icon restore format.',
+    'Dati di recupero icona non validi.': 'Invalid icon restore data.',
+    'FinderInfo della cartella di destinazione non valido.': 'Invalid FinderInfo on destination folder.',
+    "Icona già presente: usare --replace per sostituire soltanto l'icona.":
+        'Icon already present; use --replace to replace only the icon.',
+    'Icona ripristinata; nessun accesso cloud.': 'Icon restored; no cloud access.',
+    'layout richiede una directory locale reale.': 'layout requires a real local directory.',
+    'layout richiede una directory selezionata in plain.': 'layout requires a directory selected as plain.',
+    'Configurazione già presente, anche parzialmente: nessun file sovrascritto.':
+        'Configuration already exists, even partially; no files overwritten.',
+    'La directory di configurazione non può essere un collegamento per init.':
+        'The configuration directory cannot be a symlink for init.',
+    'rclone non è disponibile nel PATH.': 'rclone is not available in PATH.',
+    'rclone è terminato con codice ': 'rclone exited with code ',
+    'max_delete deve essere un intero fra 0 e 10000.': 'max_delete must be an integer from 0 to 10000.',
+    ' deve essere una tabella.': ' must be a table.',
+    'Destinazione ': 'Target ', ' non abilitata in settings.toml.': ' is not enabled in settings.toml.',
+    ' non valida.': ' is invalid.',
+    ': usare un percorso remoto relativo sicuro.': ': use a safe relative remote path.',
+    "L'area normale deve essere dedicata e terminare con '/plain'.":
+        "The plain area must be dedicated and end with '/plain'.",
+    ' non configurato. Completa prima rclone config.': ' is not configured. Complete rclone config first.',
+    '/private deve usare un remote di tipo crypt; trasferimento bloccato.':
+        '/private must use a crypt remote; transfer blocked.',
+    '/plain non offre hash per un confronto affidabile; operazione bloccata.':
+        '/plain does not provide hashes for a reliable comparison; operation blocked.',
+    'Il montaggio macbackup richiede macOS.': 'macbackup mounting requires macOS.',
+    'Impossibile avviare rclone: ': 'Could not start rclone: ',
+    ': risposta JSON non valida.': ': invalid JSON response.',
+    ': rclone è terminato con codice ': ': rclone exited with code ',
+    'Percorso inatteso nell\'area riservata alle icone.': 'Unexpected path in the area reserved for icons.',
+    ' archiviazioni tra file e icone superano max_delete=': ' archives across files and icons exceed max_delete=',
+    '; nessun trasferimento avviato.': '; no transfers started.',
+    '--progress-depth deve essere un intero fra 1 e 5.': '--progress-depth must be an integer from 1 to 5.',
+    'Inventario cloud con percorso non valido.': 'Cloud inventory contains an invalid path.',
+    'Percorsi duplicati nel cloud: forget bloccato.': 'Duplicate cloud paths; forget blocked.',
+    'Percorsi duplicati nel cloud: versions bloccato.': 'Duplicate cloud paths; versions blocked.',
+    'Elemento inatteso nell’area delle icone.': 'Unexpected item in the icon area.',
+    'Dimensione cloud non valida: forget bloccato.': 'Invalid cloud size; forget blocked.',
+    'Dimensione cloud non valida: versions bloccato.': 'Invalid cloud size; versions blocked.',
+    'Hash cloud non valido: forget bloccato.': 'Invalid cloud hash; forget blocked.',
+    'La rimozione definitiva richiede un remote Google Drive reale.':
+        'Permanent removal requires a real Google Drive remote.',
+    'Directory duplicate nel cloud: forget bloccato.': 'Duplicate cloud directories; forget blocked.',
+    'Versione storica con percorso non valido.': 'History version has an invalid path.',
+    'Versioni storiche duplicate nel cloud.': 'Duplicate history versions in the cloud.',
+    'Directory ancora presente dopo la pulizia: ': 'Directory still present after cleanup: ',
+    'La directory dei piani non può essere un collegamento.': 'The plan directory cannot be a symlink.',
+    'Per applicare un piano usare soltanto --plan ID --apply.':
+        'To apply a plan, use only --plan ID --apply.',
+    'Identificativo del piano non valido.': 'Invalid plan ID.',
+    'Piano assente o già utilizzato.': 'Plan missing or already used.',
+    'Formato del piano non valido.': 'Invalid plan format.',
+    'Usare la stessa directory di configurazione del piano.': 'Use the same configuration directory as the plan.',
+    'Piano scaduto: crearne uno nuovo.': 'Plan expired; create a new one.',
+    'Le destinazioni sono cambiate: creare un nuovo piano.': 'Targets changed; create a new plan.',
+    'Le copie cloud sono cambiate: creare un nuovo piano.': 'Cloud copies changed; create a new plan.',
+    'Le directory del piano sono cambiate: crearne uno nuovo.':
+        'Plan directories changed; create a new plan.',
+    'Rimozione definitiva automatica disponibile solo per Google.':
+        'Automatic permanent removal is available only for Google.',
+    'Per creare un piano servono percorso, --area, --target e --mode.':
+        'Creating a plan requires a path, --area, --target and --mode.',
+    'La radice / non è ammessa in forget.': 'Root / is not allowed in forget.',
+    'Per una directory aggiungere / alla fine del percorso.':
+        'For a directory, add / to the end of the path.',
+    'Oltre 10000 file: restringere il percorso e creare più piani.':
+        'More than 10000 files; narrow the path and create multiple plans.',
+    'Cestino del servizio: non equivale a cancellazione definitiva.':
+        'Provider trash; this is not permanent deletion.',
+    'Cancellazione definitiva richiesta; revisioni native e vecchio cestino non ispezionati.':
+        'Permanent deletion requested; native revisions and existing trash not inspected.',
+    'I file verranno spostati nel cestino del servizio; le directory vuote comprese nel piano verranno rimosse.':
+        'Files will move to provider trash; empty directories in the plan will be removed.',
+    'I file e le directory vuote compresi nel piano verranno cancellati definitivamente tramite il provider; revisioni native e vecchio cestino non sono inclusi.':
+        'Files and empty directories in the plan will be permanently deleted by the provider; native revisions and existing trash are not included.',
+    'Elenco delle run storiche non valido.': 'Invalid history run list.',
+    'Nome della run storica non valido.': 'Invalid history run name.',
+    'Inventario delle versioni non valido.': 'Invalid version inventory.',
+    'Il percorso indicato come directory è un file.': 'The path given as a directory is a file.',
+    '--files si usa soltanto con una directory.': '--files is only valid for a directory.',
+    'current è la copia attuale; ogni history contiene solo gli elementi spostati in quella run, non una fotografia completa della directory.':
+        'current is the latest copy; each history contains only items moved in that run, not a full directory snapshot.',
+    'Le date di modifica non sono date di archiviazione; ogni history contiene solo i file spostati in quella run.':
+        'Modification dates are not archive dates; each history contains only files moved in that run.',
+    'restore supporta un file alla volta; indicare il percorso esatto del file.':
+        'restore supports one file at a time; provide the exact file path.',
+    'Non ripristinare direttamente sopra il percorso originale.':
+        'Do not restore directly over the original path.',
+    'La destinazione non può essere un collegamento simbolico.': 'The destination cannot be a symlink.',
+    'La directory di destinazione deve già esistere.': 'The destination directory must already exist.',
+    'Il percorso di destinazione attraversa un collegamento simbolico.':
+        'The destination path crosses a symlink.',
+    'Destinazione già presente: scegliere un altro nome o usare --replace.':
+        'Destination already exists; choose another name or use --replace.',
+    'Versione assente o ambigua: consultare macbackup versions.':
+        'Version missing or ambiguous; consult macbackup versions.',
+    'Questa versione è un collegamento simbolico: aggiungere --links per ricrearlo.':
+        'This version is a symlink; add --links to recreate it.',
+    '--links è valido soltanto per un collegamento simbolico.': '--links is only valid for a symlink.',
+    'Collegamento simbolico oltre 64 KiB: ripristino bloccato.':
+        'Symlink exceeds 64 KiB; restore blocked.',
+    'Download fallito: ': 'Download failed: ',
+    'Dimensione scaricata diversa dall’inventario; nessun file ripristinato.':
+        'Downloaded size differs from inventory; no file restored.',
+    'Hash del download diverso dall’inventario; nessun file ripristinato.':
+        'Downloaded hash differs from inventory; no file restored.',
+    'La versione cloud è cambiata durante il download; nessun file ripristinato.':
+        'Cloud version changed during download; no file restored.',
+    'La destinazione è diventata un collegamento simbolico.':
+        'The destination became a symlink.',
+    'Destinazione del collegamento non rappresentabile in UTF-8.':
+        'Symlink target cannot be represented in UTF-8.',
+    'Destinazione del collegamento vuota o non valida.': 'Empty or invalid symlink target.',
+    'Con --replace si può sostituire soltanto un file regolare.':
+        '--replace can only replace a regular file.',
+    'Destinazione creata durante il download; nessuna sovrascrittura.':
+        'Destination created during download; nothing overwritten.',
+    'Hash remoto verificato.': 'Remote hash verified.',
+    'Hash del contenuto non disponibile dal backend; dimensione e inventario verificati.':
+        'Content hash unavailable from backend; size and inventory checked.',
+    'Inventario remoto non valido durante la verifica.':
+        'Invalid remote inventory during verification.',
+    'Inventario remoto duplicato o privo di dimensioni.':
+        'Duplicate remote inventory entries or missing sizes.',
+    'Rapporto di verifica incompleto o inatteso.': 'Incomplete or unexpected verification report.',
+    'Rapporto di verifica incoerente.': 'Inconsistent verification report.',
+    'Non tutti i file selezionati sono stati verificati.': 'Not all selected files were verified.',
+    '--size-only e --download non possono essere usati insieme.':
+        '--size-only and --download cannot be used together.',
+    'Confronto con le sorgenti locali attuali; una differenza non prova corruzione. Lo storico e le copie già escluse non sono coperti.':
+        'Compared with current local sources; a difference does not prove corruption. History and previously excluded copies are not covered.',
+    'Verifica rapida: solo percorsi e dimensioni; contenuti non confrontati.':
+        'Quick verification: paths and sizes only; contents not compared.',
+    'Tempo ': 'Elapsed ', 'Dati       ': 'Data       ',
+    'VELOCITÀ': 'SPEED', 'Tempo stimato': 'ETA',
+    'Verifiche': 'Checks', 'Esaminati': 'Listed',
+    'Spostati sul cloud': 'Server-side moves', 'Rinominati': 'Renamed',
+    'Cartelle attive:': 'Active folders:', 'File attivi:': 'Active files:',
+    'Cartelle attive: nessuna': 'Active folders: none',
+    '  nessuno': '  none',
+    'Tasti  ': 'Keys  ', 'Passa alle unità ': 'Switch to ',
+    'Nascondi legenda': 'Hide legend', 'Mostra legenda': 'Show legend',
+    'Interrompi il backup': 'Stop backup',
+    'Unità attuali:': 'Current units:',
+    'binaria (KiB, MiB, GiB)': 'binary (KiB, MiB, GiB)',
+    'decimale (kB, MB, GB)': 'decimal (kB, MB, GB)',
+    'Passa alle unità binaria': 'Switch to binary units',
+    'Passa alle unità decimale': 'Switch to decimal units',
+    'Legenda (solo fase corrente: plain, icone o private)':
+        'Legend (current phase only: plain, icons or private)',
+    '  Dati: volume trasferito / volume previsto. La percentuale riguarda i byte.':
+        '  Data: bytes transferred / expected. The percentage is based on bytes.',
+    '  File: trasferimenti completati / previsti. La percentuale riguarda i file.':
+        '  Files: transfers completed / expected. The percentage is based on files.',
+    '  VELOCITÀ: ritmo complessivo attuale; Tempo stimato: previsione variabile.':
+        '  SPEED: current overall rate; ETA: estimate may change.',
+    '  Verifiche: file confrontati con la copia esistente; Esaminati: voci elencate.':
+        '  Checks: files compared with existing copies; Listed: entries enumerated.',
+    '  Spostati sul cloud: file mossi dal servizio, senza riscaricarli.':
+        '  Server-side moves: files moved by the provider without downloading.',
+    '  Rinominati: file riconosciuti con un nuovo nome.':
+        '  Renamed: files recognized under a new name.',
+    '  Cartelle e file attivi: operazioni in corso, che possono essere simultanee.':
+        '  Active folders and files: in-progress operations; several may run at once.',
+    'macbackup: selezione protetta, anteprima e backup tramite rclone.':
+        'macbackup: protected file selection, preview and backup using rclone.',
+    'directory assoluta con elenchi e settings.toml':
+        'absolute directory containing path lists and settings.toml',
+    'crea quattro elenchi senza inclusioni attive': 'create four lists without active inclusions',
+    'controlla gli elenchi e le sorgenti locali': 'check path lists and local sources',
+    'risultato strutturato': 'structured result',
+    'controlla anche i remotes, senza scrivere sul cloud': 'also check remotes without writing to the cloud',
+    'destinazione del controllo remoto; richiede --remote (predefinita: google)':
+        'remote check target; requires --remote (default: google)',
+    'spiega la classificazione di un singolo percorso': 'explain classification of one path',
+    'stampa la classificazione in JSON': 'print classification as JSON',
+    'mostra le parti private dentro una directory plain': 'show private subtrees inside a plain directory',
+    'cartella plain; predefinita: directory corrente': 'plain folder; default: current directory',
+    'stampa il risultato in JSON': 'print result as JSON',
+    'anteprima locale o confronto remoto senza modifiche cloud':
+        'local preview or remote comparison without cloud changes',
+    'mostra la selezione locale senza accesso cloud': 'show local selection without cloud access',
+    'confronta il cloud in sola lettura e mostra le archiviazioni previste':
+        'read the cloud and show planned archives',
+    'stampa il piano in JSON': 'print plan as JSON',
+    'esegue il backup; richiede destinazioni abilitate e sorgenti valide':
+        'run backup; requires enabled targets and valid sources',
+    'destinazione del backup; applica le archiviazioni entro max_delete':
+        'backup target; apply archives within max_delete',
+    'livelli di cartelle attive da mostrare rispetto alla home (1-5; predefinito 2)':
+        'active folder depth relative to home (1-5; default 2)',
+    'stampa il riepilogo finale in JSON; il progresso resta su stderr':
+        'print final summary as JSON; progress stays on stderr',
+    'monta le copie cloud in sola lettura per consultazione':
+        'mount cloud copies read-only for browsing',
+    'servizio da montare; deve essere abilitato in settings.toml':
+        'service to mount; must be enabled in settings.toml',
+    'aree da mostrare (predefinita: all)': 'areas to show (default: all)',
+    'cartella base; predefinita: ~/Desktop': 'base folder; default: ~/Desktop',
+    "mostra l'esito memorizzato dell'ultima run": 'show the stored result of the last run',
+    'compatibilità: status stampa già JSON': 'compatibility: status already prints JSON',
+    'ripristina una sola icona Finder da un file di metadati locale':
+        'restore one Finder icon from a local metadata file',
+    'snapshot icon.json scaricato dal backup': 'icon.json snapshot downloaded from backup',
+    "cartella locale esistente su cui applicare l'icona": 'existing local folder to receive the icon',
+    "consente di sostituire un'icona già presente": 'allow replacing an existing icon',
+    'prepara o applica una rimozione selettiva da current e history':
+        'plan or apply selective removal from current and history',
+    'percorso originale; / finale per una directory':
+        'original path; trailing / for a directory',
+    'area da cui rimuovere copie correnti e storiche':
+        'area from which to remove current and history copies',
+    'destinazione da cui rimuovere le copie': 'target from which to remove copies',
+    'cestino o rimozione definitiva; permanent solo su Google':
+        'trash or permanent removal; permanent only on Google',
+    'piano da applicare': 'plan to apply', 'applica il piano verificato': 'apply the checked plan',
+    'stampa il piano o il risultato in JSON': 'print plan or result as JSON',
+    'elenca current e gli storici di un file o una directory':
+        'list current and history for a file or directory',
+    'destinazione in cui cercare le versioni': 'target in which to search versions',
+    'area in cui cercare (predefinita: all)': 'area to search (default: all)',
+    'per una directory, elenca solo i file presenti negli storici':
+        'for a directory, list only files in history',
+    'stampa le versioni in JSON': 'print versions as JSON',
+    'scarica una versione di un file in un percorso esplicito':
+        'download one file version to an explicit path',
+    'destinazione da cui recuperare il file': 'target from which to restore the file',
+    'area in cui si trova la versione': 'area containing the version',
+    'current o ID di history restituito da versions': 'current or history ID returned by versions',
+    'percorso locale assoluto di destinazione': 'absolute local destination path',
+    'sostituisce un file locale già presente': 'replace an existing local file',
+    'ricrea un .rclonelink come collegamento simbolico': 'recreate a .rclonelink as a symlink',
+    'confronta le sorgenti locali attuali con current nel cloud':
+        'compare current local sources with cloud current',
+    'destinazione da confrontare': 'target to compare',
+    'area da confrontare (predefinita: all)': 'area to compare (default: all)',
+    'legge i dati remoti per confrontarli': 'read remote data for comparison',
+    'confronta percorsi e dimensioni senza leggere i contenuti':
+        'compare paths and sizes without reading contents',
+    'stampa il confronto in JSON': 'print comparison as JSON',
+    'Piano': 'Plan', 'Corrispondenze:': 'Matches:',
+    'Rimozione copie ': 'Removing copies ',
+    ' file rimossi dalle cartelle del backup.': ' files removed from backup folders.',
+    'Directory vuote ripulite: ': 'Empty directories cleaned: ',
+    ' radici selezionate.': ' selected roots.',
+    'Elementi ancora presenti: ': 'Items still present: ',
+    'Creare un nuovo piano per riprovare.': 'Create a new plan to retry.',
+    'Directory da ripulire se vuote: ': 'Directories to clean if empty: ',
+    ' radici.': ' roots.', 'Directory: ': 'Directory: ',
+    ' il percorso è ancora selezionato e potrebbe essere ricaricato dalla prossima run.':
+        ' the path is still selected and may be uploaded again by the next run.',
+    "Per applicare entro un'ora:": 'To apply within one hour:',
+    'Versioni della directory': 'Directory versions',
+    'Versioni trovate:': 'Versions found:',
+    ' gruppi; ': ' groups; ',
+    ' elementi complessivi.': ' total items.',
+    ' elementi, ': ' items, ',
+    ' elementi plain, ': ' plain items, ',
+    ' privati.': ' private.',
+    ' elementi,': ' items,',
+    'Collegamento ricreato': 'Symlink recreated',
+    'File ripristinato': 'File restored',
+    ' corrispondenti; ': ' matching; ',
+    ' diversi ': ' different ', ' mancanti ': ' missing ',
+    ' errori ': ' errors ',
+    'check --target richiede anche --remote.': 'check --target also requires --remote.',
+    'Per applicare entro un\'ora:': 'To apply within one hour:',
+    ' in sola lettura: ': ' read-only at: ',
+    'Montaggio terminato: ': 'Mount ended: ',
+    'nessuna risposta da rclone.': 'no response from rclone.',
+    ' non si è smontato; controllare con mount.': ' did not unmount; inspect with mount.',
+    'Il file di stato non può essere un collegamento.': 'The status file cannot be a symlink.',
+    'I file verranno spostati nel cestino del servizio; le directory vuote ':
+        'Files will move to provider trash; empty directories ',
+    'comprese nel piano verranno rimosse.': 'included in the plan will be removed.',
+    'I file e le directory vuote compresi nel piano verranno cancellati ':
+        'Files and empty directories in the plan will be deleted ',
+    'definitivamente tramite il provider; revisioni native e vecchio cestino non sono inclusi.':
+        'permanently by the provider; native revisions and existing trash are not included.',
+    'Confronto con le sorgenti locali attuali; una differenza non prova corruzione. ':
+        'Compared with current local sources; a difference does not prove corruption. ',
+    'Lo storico e le copie già escluse non sono coperti.':
+        'History and previously excluded copies are not covered.',
+    'spostati ': 'moved ',
+    'Rinominati ': 'Renamed ',
+    'Archiviati per policy: ': 'Archived due to policy: ',
+    'trasferiti ': 'transferred ',
+    'controllati ': 'checked ',
+    'elementi selezionati.': 'items selected.',
+    'Nessuna parte privata trovata al suo interno.': 'No private subtrees found inside it.',
+    'File o directory non trovati.': 'File or directory not found.',
+    '# Nessuna password: le credenziali rimangono nella configurazione rclone.':
+        '# No passwords: credentials remain in the rclone configuration.',
+    '# Percorsi assoluti da salvare consultabili; nessuna inclusione attiva.':
+        '# Absolute paths to back up as plain; no active inclusions.',
+    '# Percorsi assoluti da salvare cifrati; nessuna inclusione attiva.':
+        '# Absolute paths to back up encrypted; no active inclusions.',
+    '# Esclusioni assolute, prevalgono sulle inclusioni esatte; nessuna esclusione attiva.':
+        '# Absolute exclusions override exact inclusions; no active exclusions.',
+    "# File e cartelle ammessi soltanto tramite inclusione esatta, anche nell'area privata.":
+        '# Files and directories allowed only by exact inclusion, including in the private area.',
+}
+
+
+def macbackup_language() -> str:
+    return 'it' if os.environ.get('MACBACKUP_LANG', 'en').lower() == 'it' else 'en'
+
+
+_TRANSLATIONS = tuple(sorted(ITALIAN_TO_ENGLISH.items(), key=lambda pair: -len(pair[0])))
+_LOCAL_PATH = re.compile(r'(?<![\w/])/(?:Users|Volumes|private|tmp|var|etc|opt|System|Library)/')
+
+
+def _localize_text(value: str) -> str:
+    for original, english in _TRANSLATIONS:
+        value = value.replace(original, english)
+    return value
+
+
+def localized(value: str) -> str:
+    if macbackup_language() == 'it':
+        return value
+    # Paths may contain words that also occur in UI messages. Keep their bytes
+    # intact while translating the surrounding label or explanation.
+    output = []
+    cursor = 0
+    for match in _LOCAL_PATH.finditer(value):
+        if match.start() < cursor:
+            continue
+        end = len(value)
+        for separator in ('\n', ': ', '; ', ' (', ' [', ' — '):
+            found = value.find(separator, match.start())
+            if found != -1:
+                end = min(end, found)
+        output.append(_localize_text(value[cursor:match.start()]))
+        output.append(value[match.start():end])
+        cursor = end
+    output.append(_localize_text(value[cursor:]))
+    return ''.join(output)
+
+
+_TRANSLATED_JSON_FIELDS = {'reason', 'note', 'error', 'errors', 'warnings'}
+
+
+def localized_json(value, key: str = ''):
+    if isinstance(value, dict):
+        return {name: localized_json(item, name) for name, item in value.items()}
+    if isinstance(value, list):
+        return [localized_json(item, key) for item in value]
+    if isinstance(value, str) and key in _TRANSLATED_JSON_FIELDS:
+        return localized(value)
+    return value
+
+
+def print(*values, **kwargs):
+    """Localize only display text and explanatory JSON values, never JSON keys."""
+    if macbackup_language() == 'it':
+        return builtins.print(*values, **kwargs)
+    rendered = []
+    for value in values:
+        if isinstance(value, str):
+            try:
+                data = json.loads(value) if value.lstrip().startswith(('{', '[')) else None
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, (dict, list)):
+                value = json.dumps(localized_json(data), ensure_ascii=False,
+                                   indent=2 if '\n' in value else None)
+            else:
+                value = localized(value)
+        rendered.append(value)
+    return builtins.print(*rendered, **kwargs)
 FINDER_ICON = "Icon\r"
 ICON_SIDECAR = "/icon.json"
 PATH_LISTS = ("plain-paths.txt", "private-paths.txt", "exclude-paths.txt")
@@ -718,7 +1250,7 @@ def init_config(directory: Path, home: Path) -> list[str]:
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             created.append(path)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(contents)
+                stream.write(localized(contents))
     except OSError:
         for path in created:
             path.unlink(missing_ok=True)
@@ -857,18 +1389,21 @@ def progress_lines(stats: dict | None, home: Path, depth: int, binary: bool,
 def styled_progress_lines(lines: list[str], stream) -> str:
     """Highlight dashboard landmarks without changing redirected output."""
     if not terminal_can_color(stream):
-        return '\n'.join(lines)
-    labels = {'macbackup': '1;36', 'Dati': '1;36',
-              'File attivi:': '1;36', 'File': '1;36',
-              'VELOCITÀ': '1;32', 'Verifiche': '1;36',
-              'Spostati sul cloud': '1;36', 'Cartelle attive:': '1;36'}
+        return localized('\n'.join(lines))
+    lines = [localized(line) for line in lines]
+    labels = {'macbackup': '1;36', 'Dati': '1;36', 'Data': '1;36',
+              'File attivi:': '1;36', 'Active files:': '1;36', 'File': '1;36',
+              'VELOCITÀ': '1;32', 'SPEED': '1;32', 'Verifiche': '1;36',
+              'Checks': '1;36', 'Spostati sul cloud': '1;36',
+              'Server-side moves': '1;36', 'Cartelle attive:': '1;36',
+              'Active folders:': '1;36'}
     rendered = []
     active_files = False
     secondary = False
     for line in lines:
-        if line == 'File attivi:':
+        if line in ('File attivi:', 'Active files:'):
             active_files = True
-        elif line.startswith('Tasti'):
+        elif line.startswith(('Tasti', 'Keys')):
             active_files = False
             secondary = True
         if secondary:
@@ -1162,7 +1697,7 @@ class MountPulse:
                   if metadata_bytes is not None else '')
         title = terminal_style(self.label, '1;36', sys.stderr)
         progress = terminal_style(f'[{bar}]', '34', sys.stderr)
-        sys.stderr.write(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}')
+        sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}'))
         sys.stderr.flush()
 
     def done(self, detail: str) -> None:
@@ -1170,7 +1705,10 @@ class MountPulse:
             sys.stderr.write('\r\x1b[2K')
         elapsed = int(time.monotonic() - self.started)
         color = '31' if detail == 'errore' else '33' if detail == 'interrotto' else '32'
-        status = terminal_style(detail, color, sys.stderr)
+        status_text = ({'completato': 'complete', 'interrotto': 'interrupted',
+                        'errore': 'error'}.get(detail, detail)
+                       if macbackup_language() == 'en' else detail)
+        status = terminal_style(status_text, color, sys.stderr)
         title = terminal_style(self.label, '1;36', sys.stderr)
         print(f'{title}: {status} ({elapsed}s).', file=sys.stderr, flush=True)
 
@@ -1776,7 +2314,7 @@ def transport_operation(args, policy: Policy) -> int:
             fd, temporary = tempfile.mkstemp(prefix="status-", dir=policy.state_dir)
             try:
                 with os.fdopen(fd, "w") as stream:
-                    json.dump(data, stream, ensure_ascii=False, indent=2)
+                    json.dump(localized_json(data), stream, ensure_ascii=False, indent=2)
                 os.replace(temporary, policy.state_dir / "last-run.json")
             finally:
                 if os.path.exists(temporary):
@@ -2523,13 +3061,31 @@ def verify_operation(args, config: Path, home: Path) -> int:
         return 0 if ok else 1
 
 
+class LocalizedArgumentParser(argparse.ArgumentParser):
+    def _print_message(self, message, file=None):
+        super()._print_message(localized(message) if message else message, file)
+
+
+def localize_parser(parser: argparse.ArgumentParser) -> None:
+    parser.description = localized(parser.description) if parser.description else None
+    for action in parser._actions:
+        if isinstance(action.help, str):
+            action.help = localized(action.help)
+        if isinstance(action, argparse._SubParsersAction):
+            for choice in action._choices_actions:
+                choice.help = localized(choice.help)
+            for child in action.choices.values():
+                localize_parser(child)
+
+
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = LocalizedArgumentParser(
         description="macbackup: selezione protetta, anteprima e backup tramite rclone."
     )
     parser.add_argument("--version", action="version", version=f"macbackup {VERSION}")
     parser.add_argument("--config-dir", metavar="PATH", help="directory assoluta con elenchi e settings.toml")
-    commands = parser.add_subparsers(dest="command", required=True)
+    commands = parser.add_subparsers(dest="command", required=True,
+                                     parser_class=LocalizedArgumentParser)
     commands.add_parser("init", help="crea quattro elenchi senza inclusioni attive")
     check = commands.add_parser("check", help="controlla gli elenchi e le sorgenti locali")
     check.add_argument("--json", action="store_true", help="risultato strutturato")
@@ -2604,6 +3160,7 @@ def make_parser() -> argparse.ArgumentParser:
     verify.add_argument('--size-only', action='store_true',
                         help='confronta percorsi e dimensioni senza leggere i contenuti')
     verify.add_argument('--json', action='store_true', help='stampa il confronto in JSON')
+    localize_parser(parser)
     return parser
 
 
@@ -2638,10 +3195,11 @@ def main(argv: list[str] | None = None) -> int:
             if file.is_symlink():
                 raise ConfigError("Il file di stato non può essere un collegamento.")
             if not file.exists():
-                data = {"ok": None, "note": "Nessuna run registrata. Nessun backup certificato."}
+                data = {"ok": None, "note": localized("Nessuna run registrata. Nessun backup certificato.")}
             else:
                 data = json.loads(file.read_text())
-            print(json.dumps(data, ensure_ascii=False, indent=2))
+            # A saved report is a historical record: keep its original language.
+            builtins.print(json.dumps(data, ensure_ascii=False, indent=2))
             return 1 if data.get("ok") is False else 0
         policy = Policy(config, home)
         if args.command == 'layout':
