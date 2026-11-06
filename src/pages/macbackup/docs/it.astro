@@ -7,12 +7,13 @@ import { getLastFileCommitDate, githubUrl } from '../../../lib/repositories';
 
 export const prerender = false;
 const page = pages.find((item) => item.path === '/macbackup/docs/it')!;
+const sourcePath = 'docs/macbackup/README.it.md';
 const [guide, updatedAt] = await Promise.all([
-  getLiveGuide('dotfiles', 'docs/macbackup.md').catch(() => null),
-  getLastFileCommitDate('dotfiles', 'docs/macbackup.md').catch(() => undefined),
+  getLiveGuide('dotfiles', sourcePath).catch(() => null),
+  getLastFileCommitDate('dotfiles', sourcePath).catch(() => undefined),
 ]);
 Astro.response.headers.set('Cache-Control', guide && updatedAt ? 'public, s-maxage=300, stale-while-revalidate=900' : 'no-store');
 ---
 <SiteLayout page={page}>
-  <LiveGuide overview="/macbackup" source={githubUrl('dotfiles', 'docs/macbackup.md')} english="/macbackup/docs" italian="/macbackup/docs/it" label="macbackup" html={guide?.html} headings={guide?.headings} fallback={page.content} updatedAt={updatedAt} />
+  <LiveGuide overview="/macbackup" source={githubUrl('dotfiles', sourcePath)} english="/macbackup/docs" italian="/macbackup/docs/it" label="macbackup" html={guide?.html} headings={guide?.headings} fallback={page.content} updatedAt={updatedAt} />
 </SiteLayout>
