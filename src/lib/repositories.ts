@@ -10,6 +10,7 @@ export { repositories, isRepositoryKey } from '../data/repositories';
 export type { RepositoryKey } from '../data/repositories';
 export type TreeEntry = { path: string; type: 'blob' | 'tree' | 'commit'; size?: number };
 const treeCache = new Map<RepositoryKey, { at: number; tree: TreeEntry[] }>();
+const fileCommitCache = new Map<string, { at: number; date: string }>();
 
 export function normalizePath(value: string): string | null {
   if (!value || value.includes('\\') || value.includes('\0')) return null;
@@ -25,6 +26,25 @@ function githubHeaders() {
     'X-GitHub-Api-Version': '2022-11-28',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+export async function getLastFileCommitDate(key: RepositoryKey, path: string): Promise<string> {
+  const cacheKey = `${key}:${path}`;
+  const cached = fileCommitCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.date;
+
+  const repo = repositories[key];
+  const params = new URLSearchParams({ sha: repo.branch, path, per_page: '1' });
+  const response = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}/commits?${params}`, {
+    headers: githubHeaders(),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`GitHub commit request failed (${response.status})`);
+  const commits = await response.json() as Array<{ commit?: { committer?: { date?: string } } }>;
+  const date = commits[0]?.commit?.committer?.date;
+  if (!date || Number.isNaN(Date.parse(date))) throw new Error(`No commit date for ${path}`);
+  fileCommitCache.set(cacheKey, { at: Date.now(), date });
+  return date;
 }
 
 export function githubUrl(key: RepositoryKey, path = '', directory = false) {

@@ -148,7 +148,8 @@ html.js-motion .code-window[data-code-ready].is-code-playing .code-reveal-line {
 .footer-inner { display: flex; justify-content: space-between; gap: 20px; color: var(--muted); font-size: 13px; }
 .footer-inner a { color: var(--muted); }
 .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
-.document-layout { display: grid; grid-template-columns: minmax(200px, 245px) minmax(0, 1fr); gap: clamp(30px, 5vw, 80px); align-items: start; }
+.wrap.document-layout, .wrap.explorer-layout { --reading-inset: clamp(22px, 4vw, 42px); width: min(100% - 48px, 1400px); }
+.document-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
 .doc-nav { position: sticky; top: 84px; max-height: calc(100vh - 108px); overflow: auto; scrollbar-gutter: stable; padding: 18px 0; font-size: 12px; }
 .doc-nav, .explorer-tree, .doc-content pre, .doc-content table { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 .doc-nav::-webkit-scrollbar, .explorer-tree::-webkit-scrollbar, .doc-content pre::-webkit-scrollbar, .doc-content table::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -163,8 +164,9 @@ html.js-motion .code-window[data-code-ready].is-code-playing .code-reveal-line {
 .doc-nav .toc-level-3 { padding-left: 24px; }
 .doc-nav a { color: var(--muted); text-decoration: none; }
 .doc-nav a:hover { color: var(--accent); }
-.doc-content { min-width: 0; max-width: 760px; padding-bottom: 90px; }
+.doc-content { min-width: 0; padding: 0 calc(var(--reading-inset) + 1px) 90px; }
 .doc-content h1 { font-size: clamp(2.5rem, 4vw, 4rem); margin-top: 0; }
+.doc-content .guide-updated { color: var(--muted); font-size: .9rem; }
 .doc-content h2 { font-size: 2rem; padding-top: 44px; margin-top: 45px; border-top: 1px solid var(--line); }
 .doc-content h3 { font-size: 1.35rem; margin-top: 34px; }
 .doc-content h4 { font-size: 1.1rem; margin-top: 30px; }
@@ -195,6 +197,7 @@ html.js-motion .code-window[data-code-ready].is-code-playing .code-reveal-line {
 }
 @media (max-width: 620px) {
   .wrap { width: min(100% - 24px, 1180px); }
+  .wrap.document-layout, .wrap.explorer-layout { --reading-inset: 20px; width: min(100% - 24px, 1400px); }
   html { scroll-padding-top: 82px; }
   .header-inner { min-height: 60px; flex-direction: row; align-items: center; gap: 8px; padding-block: 8px; }
   .brand-name { display: none; }
@@ -315,7 +318,7 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 .explorer-intro h1 { font-size: clamp(3rem, 5.2vw, 5rem); margin-block: 16px 20px; }
 .explorer-intro h1 strong { color: var(--accent); font-weight: inherit; }
 .explorer-intro .lead a { color: var(--accent); font-weight: 700; }
-.explorer-layout { display: grid; grid-template-columns: minmax(255px, 320px) minmax(0, 1fr); align-items: start; gap: 18px; min-height: 65vh; }
+.explorer-layout { display: grid; grid-template-columns: minmax(255px, 300px) minmax(0, 1fr); align-items: start; gap: 20px; min-height: 65vh; }
 .explorer-sidebar { position: sticky; top: 85px; padding: 0; overflow: hidden; }
 .explorer-sidebar-head { padding: 18px 17px 13px; border-bottom: 1px solid var(--line); }
 .explorer-sidebar-head p { display: flex; align-items: center; gap: 7px; margin: 12px 0 0; font-size: 12px; }
@@ -366,9 +369,11 @@ html.theme-switching *, html.theme-switching *::before, html.theme-switching *::
 .explorer-directory a:hover { background: var(--panel-2); color: var(--accent); }
 .explorer-image { display: grid; place-items: center; min-height: 200px; padding: 30px; }
 .explorer-image img { max-width: 100%; height: auto; }
-.repository-markdown { max-width: 850px; padding: clamp(22px, 4vw, 42px); font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.repository-markdown { padding: var(--reading-inset); font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
 .repository-markdown h1 { font-size: clamp(2rem, 3.5vw, 3rem); }
 .repository-markdown h2 { font-size: 1.75rem; padding-top: 28px; border-top: 1px solid var(--line); }
+.repository-markdown hr { height: 0; margin: 32px 0; border: 0; border-top: 1px solid var(--line); }
+.repository-markdown hr + h2 { padding-top: 0; border-top: 0; }
 .repository-markdown h3 { font-size: 1.28rem; margin-top: 32px; }
 .repository-markdown h1, .repository-markdown h2, .repository-markdown h3, .repository-markdown h4 { scroll-margin-top: 110px; }
 .repository-markdown p, .repository-markdown li { color: var(--muted); }

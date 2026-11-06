@@ -1,0 +1,14 @@
+---
+import SiteLayout from '../../../layouts/SiteLayout.astro';
+import { pages } from '../../../data/pages';
+import { getLastFileCommitDate } from '../../../lib/repositories';
+import { withGuideUpdated } from '../../../lib/guide-updated';
+
+export const prerender = false;
+const page = pages.find((item) => item.path === '/nvim/docs')!;
+const updatedAt = await getLastFileCommitDate('nvim', 'README.md').catch(() => undefined);
+Astro.response.headers.set('Cache-Control', updatedAt ? 'public, s-maxage=300, stale-while-revalidate=900' : 'no-store');
+---
+<SiteLayout page={page}>
+  <main transition:name="page-content" data-guide="true"><Fragment set:html={withGuideUpdated(page.content, updatedAt, 'en')} /></main>
+</SiteLayout>

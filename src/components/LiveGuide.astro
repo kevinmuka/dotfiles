@@ -1,5 +1,6 @@
 ---
 import type { GuideHeading } from '../lib/live-guides';
+import { withGuideUpdated } from '../lib/guide-updated';
 
 interface Props {
   overview: string;
@@ -10,9 +11,10 @@ interface Props {
   html?: string;
   headings?: GuideHeading[];
   fallback: string;
+  updatedAt?: string;
 }
 
-const { overview, source, english, italian, label, html, headings = [], fallback } = Astro.props;
+const { overview, source, english, italian, label, html, headings = [], fallback, updatedAt } = Astro.props;
 ---
 <main transition:name="page-content" data-guide="true">
   {html ? <>
@@ -24,10 +26,10 @@ const { overview, source, english, italian, label, html, headings = [], fallback
     </div>
     <div class="wrap document-layout">
       <aside class="doc-nav"><p class="eyebrow">In questa pagina</p><nav aria-label="Indice della guida"><ul>{headings.map((heading) => <li class={`toc-level-${heading.level}`}><a href={`#${heading.id}`} set:html={heading.label} /></li>)}</ul></nav></aside>
-      <article class="doc-content" set:html={html} />
+      <article class="doc-content" set:html={withGuideUpdated(html, updatedAt, 'it')} />
     </div>
   </> : <>
     <div class="wrap guide-fallback">La versione aggiornata non è disponibile al momento. Qui sotto trovi la copia salvata; <a href={source} target="_blank" rel="noopener noreferrer">puoi leggere la guida su GitHub ↗</a>.</div>
-    <Fragment set:html={fallback} />
+    <Fragment set:html={withGuideUpdated(fallback, updatedAt, 'it')} />
   </>}
 </main>
