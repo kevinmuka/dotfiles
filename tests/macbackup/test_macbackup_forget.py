@@ -117,7 +117,7 @@ class ForgetTests(unittest.TestCase):
 
     def test_excluded_source_is_still_found(self):
         current = self.make_plain()
-        (self.config / 'exclude-paths.txt').write_text(str(self.original.parent) + '\n')
+        (self.config / 'exclude-paths.txt').write_text(str(self.original.parent) + '/\n')
         plan = self.plan()
         self.assertEqual(plan['count'], 1)
         self.assertFalse(plan['selected_locally'])

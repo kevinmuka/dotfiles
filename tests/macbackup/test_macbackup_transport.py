@@ -86,7 +86,7 @@ class TransportTests(unittest.TestCase):
         )
 
     def rules(self, private=False, exact_plain=False, excluded=False):
-        (self.config / "plain-paths.txt").write_text(str(self.source) + "\n" + (str(self.secret) + "\n" if exact_plain else ""))
+        (self.config / "plain-paths.txt").write_text(str(self.source) + "/\n" + (str(self.secret) + "\n" if exact_plain else ""))
         (self.config / "private-paths.txt").write_text(str(self.secret) + "\n" if private else "")
         (self.config / "exclude-paths.txt").write_text(str(self.normal) + "\n" if excluded else "")
 
@@ -110,7 +110,29 @@ class TransportTests(unittest.TestCase):
         result = self.cli("preview", "--target", "google", "--json")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(self.current.exists())
-        self.assertIn("Preview", json.loads(result.stdout)["note"])
+        self.assertIn('content differences not checked', json.loads(result.stdout)['note'])
+        self.assertNotIn('Preview google/plain/files:', result.stderr)
+
+    def test_simulated_preview_retains_transfer_dry_run(self):
+        result = self.cli('preview', '--target', 'google', '--simulate', '--json')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.current.exists())
+        self.assertIn('Preview google/plain/files: in progress...', result.stderr)
+        self.assertIn('Preview google/plain/files: complete', result.stderr)
+
+    def test_simulation_requires_remote_target(self):
+        result = self.cli('preview', '--local', '--simulate')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('preview --simulate requires --target', result.stderr)
+
+    def test_preview_reports_private_comparison_progress_without_changing_cloud(self):
+        self.rules(private=True)
+        self.run_backup()
+        result = self.cli('preview', '--target', 'google', '--simulate', '--json')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Comparing private google/private/files: in progress...', result.stderr)
+        self.assertIn('Comparing private google/private/files: complete', result.stderr)
+        self.assertEqual(self.secret.read_text(), 'synthetic private v1')
 
     def test_backup_excludes_env_and_keeps_absolute_path_structure(self):
         self.run_backup()
@@ -123,6 +145,7 @@ class TransportTests(unittest.TestCase):
         result = self.cli('check', '--remote', '--target', 'google', '--json')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(json.loads(result.stdout)['ok'])
+        self.assertIn('warnings', json.loads(result.stdout))
 
     def test_remote_check_rejects_same_file_in_plain_and_private(self):
         self.run_backup()
@@ -350,7 +373,7 @@ except module['TransferInterrupted'] as exc:
         directory.mkdir()
         file = directory / "settings.ini"
         file.write_text("synthetic private settings")
-        (self.config / "private-paths.txt").write_text(str(directory) + "\n")
+        (self.config / "private-paths.txt").write_text(str(directory) + "/\n")
         self.run_backup()
         file.unlink()
         self.run_backup()
@@ -392,7 +415,7 @@ except module['TransferInterrupted'] as exc:
         self.run_backup()
         self.assertEqual(self.remote_path(old).read_text(), "synthetic dependency v1")
         old.write_text("synthetic dependency v2")
-        (self.config / "explicit-only-patterns.txt").write_text(".env\n.env.*\nnode_modules\n")
+        (self.config / "explicit-only-patterns.txt").write_text(".env\n.env.*\nnode_modules/\n")
         result = self.run_backup()
         self.assertFalse(self.remote_path(old).exists())
         self.assertFalse(any(item["archive_deleted"] for item in result["results"]))
@@ -460,7 +483,7 @@ except module['TransferInterrupted'] as exc:
         (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
         self.run_backup()
         self.assertFalse(self.remote_path(object_file).exists())
-        (self.config / 'plain-paths.txt').write_text(str(self.source) + '\n' + str(git_dir) + '\n')
+        (self.config / 'plain-paths.txt').write_text(str(self.source) + '/\n' + str(git_dir) + '/\n')
         result = self.run_backup()
         self.assertEqual(self.remote_path(object_file).read_text(), 'synthetic git object')
         private_result = next(item for item in result['results']
@@ -494,9 +517,10 @@ except module['TransferInterrupted'] as exc:
             'max_delete = 25\n', 'max_delete = 25\n[policy]\nignored_file_names = [".DS_Store"]\n'))
         self.run_backup()
         self.assertFalse(self.remote_path(ignored).exists())
-        (self.config / 'plain-paths.txt').write_text(str(self.source) + '\n' + str(ignored) + '\n')
+        (self.config / 'plain-paths.txt').write_text(str(self.source) + '/\n' + str(ignored) + '\n')
         self.run_backup()
         self.assertEqual(self.remote_path(ignored).read_text(), 'synthetic metadata')
+        (self.config / 'plain-paths.txt').write_text(str(self.source) + '/\n')
         (self.config / 'private-paths.txt').write_text(str(ignored) + '\n')
         result = self.run_backup()
         self.assertFalse(self.remote_path(ignored).exists())
@@ -602,7 +626,7 @@ except module['TransferInterrupted'] as exc:
         extra = self.source / 'extra.txt'
         extra.write_text('synthetic extra')
         self.run_backup()
-        (self.config / 'exclude-paths.txt').write_text(str(self.source) + '\n')
+        (self.config / 'exclude-paths.txt').write_text(str(self.source.parent) + '/\n')
         self.settings(limit=1)
         preview = self.cli('preview', '--target', 'google', '--json')
         self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)

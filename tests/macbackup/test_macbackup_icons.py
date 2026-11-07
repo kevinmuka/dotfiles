@@ -89,7 +89,7 @@ class IconTests(unittest.TestCase):
         self.run_backup()
         original = self.icon_file().read_bytes()
         self.attr(icon, 'com.apple.ResourceFork', b'excluded icon v2')
-        (self.config / 'exclude-paths.txt').write_text(str(self.source) + '\n')
+        (self.config / 'exclude-paths.txt').write_text(str(self.source.parent) + '/\n')
         result = self.run_backup()
         self.assertFalse(self.icon_file().exists())
         history = self.base / 'plain-store/MacBackup/plain/macos-icons/history'
@@ -124,7 +124,7 @@ class IconTests(unittest.TestCase):
         folder = self.source / 'private-config'
         folder.mkdir()
         self.icon(folder)
-        (self.config / 'private-paths.txt').write_text(str(folder) + '\n')
+        (self.config / 'private-paths.txt').write_text(str(folder) + '/\n')
         self.run_backup()
         self.assertFalse(self.icon_file(folder).exists())
         relative = str(folder).lstrip('/') + '/icon.json'

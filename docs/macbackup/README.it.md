@@ -1,6 +1,6 @@
 # macbackup: manuale d'uso
 
-**Versione di macbackup documentata: `0.12.8`.** Verifica la versione installata con `macbackup --version`.
+**Versione di macbackup documentata: `0.14.0`.** Verifica la versione installata con `macbackup --version`.
 
 Questa è la traduzione italiana del [manuale principale in inglese](README.md). In caso di differenze, fa fede la versione inglese, da aggiornare per prima quando cambia il programma.
 
@@ -82,8 +82,8 @@ Un remote plain, come `gdrive:`, accede al servizio. Un remote crypt, come `gdri
 - Non si usano virgolette negli elenchi, nemmeno per nomi con spazi.
 - Non si espandono `~`, `$HOME`, variabili, comandi o caratteri jolly.
 - Non si supportano commenti alla fine di una riga che contiene un percorso.
-- Un file seleziona quel file; una directory seleziona ricorsivamente i discendenti, compresi i file nascosti, ma senza autorizzare implicitamente file o directory soggetti alla regola explicit-only.
-- La barra finale può indicare una directory; non cambia la precedenza delle regole.
+- Il percorso di una directory **deve** terminare con `/`; quello di un file o symlink **non deve**. Un tipo errato su un percorso esistente è un errore di configurazione prima dell'accesso al cloud. Un'esclusione assente può riferirsi a un percorso futuro: il tipo viene verificato quando compare. Una sorgente inclusa direttamente ma assente è un errore, salvo sospensione tramite esclusione di un antenato.
+- Un file o symlink seleziona soltanto se stesso; una directory seleziona ricorsivamente i discendenti, compresi i file nascosti, soggetti alle altre regole. Un symlink verso una directory resta un symlink: la destinazione non viene attraversata.
 - Il programma rifiuta percorsi relativi e componenti `..`, invece di interpretarli in modo dipendente dalla posizione del terminale.
 - La selezione della radice `/` come intera sorgente è rifiutata. `/` è soltanto il riferimento per ricostruire i percorsi.
 - Nomi non rappresentabili senza ambiguità nel formato a righe, per esempio contenenti un ritorno a capo, devono produrre un errore esplicito. Il programma non deve saltarli silenziosamente.
@@ -100,19 +100,37 @@ Le regole sono letterali: un percorso che contiene `[` o `*` nel nome non deve d
 6. Un'inclusione normale non privata viene salvata nell'area `plain`.
 7. Un percorso non selezionato non viene salvato.
 
-Le policy per nome danno il comportamento predefinito; un'inclusione **esatta** può autorizzare un file ignorato o rendere plain una directory cifrata automaticamente per nome. `private-paths.txt` prevale su `plain-paths.txt` per lo stesso percorso, mentre `exclude-paths.txt` prevale su entrambi. Includere soltanto la directory superiore non crea eccezioni esatte per i suoi discendenti.
+Le policy per nome danno il comportamento predefinito; un'inclusione **esatta** può autorizzare un file ignorato o rendere plain una directory cifrata automaticamente per nome. Un percorso identico in due elenchi è ora un errore di configurazione; per percorsi diversi che si sovrappongono, private prevale su plain ed exclude prevale su entrambi. Includere soltanto la directory superiore non crea eccezioni esatte per i suoi discendenti.
 
 Non si consente di reincludere un discendente di una directory esclusa. Dentro una directory cifrata per inclusione in `private-paths.txt`, plain non può prevalere; l'eccezione plain riguarda soltanto la cifratura automatica per nome e richiede l'inclusione esatta della directory. Queste scelte mantengono prevedibili le regole indipendentemente dall'ordine delle righe.
 
-Con `private_directory_names = [".git"]`, una directory `.git` sotto una sorgente selezionata viene cifrata anche se `.git` compare in `explicit-only-patterns.txt`: questa è l'eccezione esplicita al blocco per nome. Se aggiungi `/Users/example/Desktop/project/.git` direttamente a `plain-paths.txt`, la directory e i file ammessi al suo interno diventano plain. Se lo stesso percorso è anche in `private-paths.txt`, resta cifrato. Un `.env` al suo interno rimane soggetto alla propria regola explicit-only. La regola automatica riguarda le **directory** chiamate `.git`, non un file ordinario con quel nome; un'esclusione assoluta continua a prevalere. Cambiare una `.git` da private a plain sposta la vecchia copia da `private/current` a `private/history` e carica la nuova in `plain/current`: per rimuovere anche la vecchia copia cifrata serve `forget --area private`.
+Il validatore controlla anche le regole che si nasconderebbero a vicenda. Rifiuta lo stesso percorso assoluto normalizzato ripetuto nello stesso elenco o in elenchi diversi, indicando entrambi i file e le righe. Sono ammessi percorsi diversi in rapporto padre/figlio: un progetto plain può contenere una `.git/` privata e una `build/` esclusa. Se l'esclusione di un **antenato** copre una sorgente inclusa direttamente, `check` avvisa indicando entrambe le righe e sospende quella sorgente: se manca, `run` non si ferma. Tolta l'esclusione, la sorgente torna obbligatoria. Un percorso identico in include ed exclude è invece un errore, non una sospensione.
+
+Le regole basate sul nome ignorano maiuscole e minuscole, mentre i percorsi assoluti conservano la grafia esatta. Sono errori i nomi TOML duplicati, un pattern explicit-only di directory che corrisponde a un valore di `private_directory_names` e un pattern explicit-only di file che corrisponde a un valore di `ignored_file_names`. Valgono anche le corrispondenze tramite wildcard, come `.g*/` con `.git` e `.D*` con `.DS_Store`. Quest'ultimo incrocio è rifiutato perché il controllo dei nomi ignorati aggirerebbe la protezione explicit-only contro gli alias hard link. Il pattern per file `.git` e il nome di directory privata `.git` sono compatibili: riguardano tipi diversi. Fra pattern explicit-only dello stesso tipo, la copertura completa è un errore (`node*/` rende ridondante `node_modules/`), mentre una sovrapposizione parziale dimostrabile è un avviso (`node*/` e `*modules/`). Questi controlli avvengono al caricamento della policy, prima dell'accesso al cloud.
+
+Gli incroci con `.gitignore` sono valutati durante la scansione locale. Una regola Git effettiva che esclude normalmente un percorso non produce avvisi. Se un'inclusione esatta la scavalca, `check` mostra il percorso, la riga dell'inclusione e la sorgente e riga del `.gitignore`. La classificazione automatica di una directory in private che scavalca `.gitignore` produce al massimo un avviso per directory. Queste eccezioni intenzionali non bloccano `run`; includere esattamente una directory non estende l'eccezione ai suoi discendenti.
+
+**Ambito dell'inclusione e delle eccezioni.** Elencare una directory seleziona il suo sottoalbero, ma non rende *esatta* l'inclusione di ogni discendente. Ogni figlio viene classificato di nuovo secondo le regole. Elencare direttamente un file o una directory crea un'eccezione solo per quel percorso, non per tutti i suoi figli né per altri percorsi con lo stesso nome.
+
+| Regola | Effetto sotto una directory selezionata | Effetto di una voce esatta |
+|---|---|---|
+| `ignored_file_names` | Gli elementi non-directory con il nome indicato vengono saltati a qualsiasi profondità. | Elencare direttamente un file o symlink corrispondente in plain o private include solo quell'elemento; gli altri restano saltati. |
+| `explicit-only-patterns.txt` | Un file corrispondente viene saltato; una directory corrispondente viene saltata insieme ai discendenti. | Elencare direttamente il percorso protetto lo ammette. Se è una directory, la visita riprende, ma i discendenti protetti richiedono ancora una propria voce esatta. |
+| `.gitignore` con `use_gitignore = true` | Le regole Git effettive sono controllate per ogni percorso incluso tramite un antenato; una directory ignorata non viene visitata. | Elencare direttamente un percorso prevale su Git ignore per quel percorso. Elencare una directory ignorata non disattiva le regole per tutti i suoi figli. |
+| `private_directory_names` | Una directory con il nome indicato e i suoi discendenti altrimenti ammessi finiscono in private. | Elencare esattamente quella directory in plain disattiva la cifratura automatica per il suo sottoalbero, salvo che la copra anche un'inclusione private. Le regole sui singoli figli continuano a valere. |
+| `exclude-paths.txt` | Una directory esclusa e tutto il suo sottoalbero vengono saltati. | Nessuna inclusione esatta può riaprire il percorso escluso o un suo figlio. |
+
+Per esempio, se `project/` è selezionato, un `project/build/` ignorato viene saltato. Elencare direttamente `project/build/` permette di visitare la directory, ma i file al suo interno possono ancora essere ignorati; per fare eccezione anche per un file occorre elencarlo direttamente. Analogamente, elencare una directory protetta `project/node_modules/` consente la visita ma non autorizza un `.env` protetto al suo interno. Usa `explain ABS_PATH` per un percorso e `preview --local` per controllare la selezione prima della run.
+
+Con `private_directory_names = [".git"]`, una directory `.git` sotto una sorgente selezionata viene cifrata. Un file chiamato `.git` può essere protetto separatamente da explicit-only; il pattern di directory `.git/` sarebbe ridondante e viene rifiutato. Se aggiungi `/Users/example/Desktop/project/.git/` direttamente a `plain-paths.txt`, la directory e i file ammessi al suo interno diventano plain. Non elencare lo stesso percorso anche in private: è un errore. Un **antenato** incluso esplicitamente in private continua invece a prevalere sul figlio plain. Un `.env` al suo interno rimane soggetto alla propria regola explicit-only; un'esclusione assoluta continua a prevalere. Cambiare una `.git` da private a plain sposta la vecchia copia da `private/current` a `private/history` e carica la nuova in `plain/current`: per rimuovere anche la vecchia copia cifrata serve `forget --area private`.
 
 Un percorso indica se stesso e i propri discendenti, non nomi simili: `/a/karabiner/` non comprende `/a/karabiner-old/`.
 
-Per ignorare altri nomi di file in tutta la selezione, aggiungerli come stringhe letterali a `ignored_file_names` in `settings.toml`, per esempio `ignored_file_names = [".DS_Store", "Thumbs.db"]`. Il confronto non distingue maiuscole e minuscole; non sono ammessi percorsi o wildcard. Gli spazi dentro le stringhe TOML sono significativi: `" ← "` indica esattamente un nome con uno spazio prima e uno dopo la freccia. Per esempio, una policy può ignorare `.DS_Store`, ` ← ` e `.localized` quando sono inclusi tramite una directory superiore. Per salvarne una specifica copia, aggiungi il percorso assoluto del file a `plain-paths.txt` o `private-paths.txt`; private vince se il percorso compare in entrambi ed exclude prevale sempre. Questa inclusione non autorizza altri file con lo stesso nome. Una nuova regola archivia nella prossima `run` le copie non più ammesse presenti in `current`, lasciandole in `history`; per rimuoverle da tutte le versioni si usa `forget`. La regola non cancella file locali.
+Per ignorare altri nomi di file in tutta la selezione, aggiungerli come stringhe letterali a `ignored_file_names` in `settings.toml`, per esempio `ignored_file_names = [".DS_Store", "Thumbs.db"]`. Il confronto non distingue maiuscole e minuscole; non sono ammessi percorsi o wildcard. Gli spazi dentro le stringhe TOML sono significativi: `" ← "` indica esattamente un nome con uno spazio prima e uno dopo la freccia. Per esempio, una policy può ignorare `.DS_Store`, ` ← ` e `.localized` quando sono inclusi tramite una directory superiore. Per salvarne una specifica copia, aggiungi il percorso assoluto del file a `plain-paths.txt` o `private-paths.txt`; il percorso identico in entrambi gli elenchi è un errore ed exclude prevale sempre. Non ripetere un nome sensibile sia in `ignored_file_names` sia in un pattern explicit-only per file: è un errore, perché l'ignore può aggirare la protezione degli alias hard link di explicit-only. Questa inclusione non autorizza altri file con lo stesso nome. Una nuova regola archivia nella prossima `run` le copie non più ammesse presenti in `current`, lasciandole in `history`; per rimuoverle da tutte le versioni si usa `forget`. La regola non cancella file locali.
 
 `use_gitignore = true` usa Git per leggere i file `.gitignore` lungo i percorsi inclusi, anche in directory che non sono repository Git. Sono supportati i pattern e le negazioni di Git; non vengono consultati l'indice, `.git/info/exclude` e i file globali di esclusione. La ricerca parte dalla radice del filesystem, quindi può applicare anche `.gitignore` in directory antenate della sorgente selezionata. I collegamenti simbolici non vengono attraversati. Il file `.gitignore` stesso resta selezionabile come gli altri file, a meno che una regola non lo escluda. Serve Git nel `PATH`; se il controllo fallisce, la selezione si ferma.
 
-`init` imposta questa opzione a `false`. Prima di passare a `true`, confrontare `macbackup preview --local` con il risultato precedente: i file ignorati verranno omessi anche se la directory che li contiene è in `plain-paths.txt` o `private-paths.txt`. Un file elencato direttamente in `plain-paths.txt` o `private-paths.txt` resta incluso anche se il suo nome o una directory antenata è ignorata da `.gitignore`; `private` mantiene la precedenza su `plain`. Un'inclusione esatta di una directory non disattiva le regole per i suoi discendenti. Le cartelle `.git` cifrate automaticamente tramite `private_directory_names` restano incluse. L'aggiunta di un `.gitignore` o l'attivazione dell'opzione fa archiviare nella prossima `run` le vecchie copie non più selezionate da `current` allo storico della stessa area. Non le elimina; per rimuoverle da tutte le versioni si usa `forget`.
+`init` imposta questa opzione a `false`. Prima di passare a `true`, confrontare `macbackup preview --local` con il risultato precedente: i file ignorati verranno omessi anche se la directory che li contiene è in `plain-paths.txt` o `private-paths.txt`. Un file elencato direttamente resta incluso anche se il suo nome o una directory antenata è ignorata da `.gitignore`. Un'inclusione esatta di una directory non disattiva le regole per i suoi discendenti. `check`, anche con `--remote`, avvisa quando un'inclusione esatta prevale su un'effettiva regola Git ignore, indicando entrambe le sorgenti; per la classificazione privata automatica emette al massimo un avviso per directory. I file normalmente ignorati non producono avvisi e questi incroci non bloccano `run`. L'aggiunta di un `.gitignore` o l'attivazione dell'opzione fa archiviare nella prossima `run` le vecchie copie non più selezionate da `current` allo storico della stessa area. Non le elimina; per rimuoverle da tutte le versioni si usa `forget`.
 
 ### 3.2.1 Nomi ammessi soltanto tramite inclusione esatta
 
@@ -121,13 +139,15 @@ Configurazione iniziale di `explicit-only-patterns.txt`:
 ```text
 .env
 .env.*
+.env/
+.env.*/
 ```
 
-Qui si descrivono nomi, non percorsi assoluti. La regola `.env` corrisponde a quel nome in qualsiasi directory; `.env.*` comprende per esempio `.env.local`, `.env.production` e anche `.env.example`. Un file di esempio eventualmente innocuo va incluso direttamente se lo si desidera: non si presume che sia privo di segreti. Si possono aggiungere nomi come `node_modules`, `.venv`, `venv` e `myenv`: una directory con uno di questi nomi viene saltata ovunque si trovi.
+Qui si descrivono nomi, non percorsi assoluti. La regola `.env` corrisponde a un file o symlink con quel nome in qualsiasi directory; `.env.*` comprende file come `.env.local`, `.env.production` e `.env.example`. Le varianti con `/` proteggono directory con gli stessi nomi e i loro discendenti finché la directory non viene inclusa esattamente. Un file di esempio eventualmente innocuo va incluso direttamente se lo si desidera: non si presume che sia privo di segreti. Si possono aggiungere nomi come `node_modules/`, `.venv/`, `venv/` e `myenv/` per proteggere le directory ovunque si trovino.
 
-La sintassi accetta nomi e il carattere jolly `*`, limitato al nome finale del file o della directory; non accetta `/`, `**`, espressioni regolari o regole con segno `+` o `-`. Righe vuote e commenti a inizio riga funzionano come negli altri elenchi. Per prudenza questi soli controlli sui nomi sono senza distinzione tra maiuscole e minuscole: anche `.ENV` richiede un'inclusione esatta. Gli altri percorsi mantengono la propria semantica e non diventano globalmente insensibili alle maiuscole.
+La sintassi accetta nomi letterali e il carattere jolly `*` nel basename. Una `/` finale indica un pattern di directory; senza `/` il pattern riguarda file e symlink. Non sono ammessi `/` interni, `**`, espressioni regolari o regole con segno `+` o `-`. Righe vuote e commenti a inizio riga funzionano come negli altri elenchi. Le policy per nome non distinguono maiuscole e minuscole: anche `.ENV` richiede un'inclusione esatta. Gli elenchi di percorsi assoluti sono invece case sensitive e richiedono la grafia esatta. Nomi duplicati anche solo per maiuscole, percorsi normalizzati duplicati e percorsi identici in elenchi diversi sono errori. Tra pattern explicit-only dello stesso tipo, una ridondanza dimostrabile è un errore; una sovrapposizione parziale dimostrabile produce un avviso.
 
-La regola riguarda file, directory ed elementi simbolici con quei nomi. Per autorizzare esplicitamente una directory protetta si aggiunge il suo percorso completo a un elenco di inclusione; i file al suo interno seguono comunque le altre regole, quindi un `.env` resta protetto. La selezione di un collegamento salva il collegamento secondo la politica descritta sotto e non autorizza automaticamente la copia della destinazione.
+Ogni pattern riguarda soltanto il tipo dichiarato. Per autorizzare esplicitamente una directory protetta si aggiunge il suo percorso completo a un elenco di inclusione; i file al suo interno seguono comunque le altre regole, quindi un `.env` resta protetto. La selezione di un collegamento salva il collegamento secondo la politica descritta sotto e non autorizza automaticamente la copia della destinazione.
 
 Esempio con `/Users/example/Desktop/progetto/` in plain:
 
@@ -137,7 +157,7 @@ Esempio con `/Users/example/Desktop/progetto/` in plain:
 | Percorso esatto in plain | Salvato nell'area normale, con avviso di inclusione esplicita di un nome protetto |
 | Percorso esatto in private | Salvato cifrato e assente dalla copia normale |
 | Directory progetto in private, senza il percorso esatto del file | Saltato: anche l'inclusione privata è soltanto ereditata |
-| Percorso esatto in entrambi gli elenchi | Salvato cifrato: private prevale |
+| Percorso esatto in entrambi gli elenchi | Errore di configurazione: rimuovere la voce duplicata |
 | Percorso del file o di un suo antenato in exclude | Saltato in ogni caso |
 
 L'autorizzazione è soltanto per il percorso scritto: elencare esattamente `progetto/.env` non autorizza `progetto/subdir/.env`, `altro-progetto/.env` o `progetto/.env.local`.
@@ -178,15 +198,17 @@ Questi file mostrano la sintassi. Sostituire `/Users/example` con il percorso as
 # explicit-only-patterns.txt
 .env
 .env.*
-node_modules
-.venv
-venv
-myenv
+.env/
+.env.*/
+node_modules/
+.venv/
+venv/
+myenv/
 .git
-.astro
+.astro/
 ```
 
-Sono **otto pattern di esempio**; `init` ne crea soltanto due (`.env` e `.env.*`). Le esclusioni `dist/` e `.vercel/output/` qui sono assolute e limitate a un solo progetto: non escludono directory con gli stessi nomi altrove. Se si vuole una regola globale per nome, usare `explicit-only-patterns.txt`. Con `private_directory_names = [".git"]`, le directory `.git` sotto una sorgente inclusa sono cifrate automaticamente anche se `.git` è explicit-only; la precedenza completa è in §3.2.
+Sono **dieci pattern di esempio**; `init` crea soltanto i quattro pattern `.env` per file e directory. Le esclusioni `dist/` e `.vercel/output/` qui sono assolute e limitate a un solo progetto: non escludono directory con gli stessi nomi altrove. Se si vuole una regola globale per nome, usare `explicit-only-patterns.txt`. Qui `.git` protegge i file chiamati `.git`; le directory con quel nome sono cifrate da `private_directory_names`. La precedenza completa è in §3.2.
 
 Per conoscere la configurazione effettiva aprire i cinque file di `~/.config/macbackup/`, oppure usare `macbackup check`, `macbackup explain ABS_PATH` e `macbackup preview --local`. Non dedurre la selezione da questi esempi.
 
@@ -204,7 +226,7 @@ Configurare una coppia `plain`/`private` per ogni servizio che si intende usare.
 
 Per Google, seguire la [guida rclone per Drive](https://rclone.org/drive/) per l'OAuth e verificare il remote con `rclone about NOME_REMOTE:`. Il permesso `drive.file` consente di gestire i file autorizzati all'app; non concede automaticamente accesso a ogni file già presente in Drive. Un client OAuth personale in stato Testing può avere refresh token con durata limitata: verificare lo stato dell'app e le regole Google prima di affidare il backup a un'esecuzione automatica. Il montaggio in sola lettura non cambia i permessi OAuth del remote. Per Proton usare la [guida rclone Proton Drive](https://rclone.org/protondrive/) e provare separatamente copia e recupero. I remotes vanno configurati in rclone, non contengono credenziali in `settings.toml`.
 
-L'ordine operativo è: configurare i remotes in rclone e provarne l'accesso, compilare gli elenchi, eseguire `macbackup check` e `macbackup preview --local`, abilitare la destinazione in `settings.toml`, quindi eseguire `macbackup check --remote --target google` e `macbackup preview --target google`. Sostituire `google` con il target da configurare. Solo dopo aver controllato le operazioni previste eseguire `run`; verificare il risultato con `status`, `verify` e una prova di recupero di un file non sensibile in una directory separata. Il controllo remoto legge inventari e capacità, non certifica la recuperabilità di ogni file. `preview --target` è una simulazione e non prenota lo stato dei file: `run` ripete i controlli.
+L'ordine operativo è: configurare i remotes in rclone e provarne l'accesso, compilare gli elenchi, eseguire `macbackup check` e `macbackup preview --local`, abilitare la destinazione in `settings.toml`, quindi eseguire `macbackup check --remote --target google` e `macbackup preview --target google`. Sostituire `google` con il target da configurare. Solo dopo aver controllato le operazioni previste eseguire `run`; verificare il risultato con `status`, `verify` e una prova di recupero di un file non sensibile in una directory separata. Il controllo remoto legge inventari e capacità, non certifica la recuperabilità di ogni file. `preview --target` produce un piano in sola lettura e non prenota lo stato dei file: `run` ripete i controlli.
 
 ## 4. Struttura delle destinazioni
 
@@ -289,7 +311,7 @@ Sono sottocomandi di macbackup, non di rclone. Il ripristino generale di un albe
 | `check` | Controlla sorgenti locali; con `--remote --target` legge anche inventari e remotes |
 | `explain PATH` | Spiega la classificazione locale di un singolo percorso |
 | `layout [PATH]` | Mostra le parti private dentro una directory plain; senza PATH usa la directory corrente |
-| `preview --local` / `preview --target` | Mostra la selezione locale o simula il trasferimento remoto senza modifiche |
+| `preview --local` / `preview --target` | Mostra la selezione locale o il piano delle archiviazioni remote senza modifiche; `--simulate` esegue anche i controlli dei trasferimenti |
 | `run --target` | Trasferisce nelle aree abilitate, conserva versioni e mostra l'avanzamento |
 | `mount --target` | Monta plain, private o entrambe in sola lettura su macOS; Ctrl-C o espulsione dal Finder smonta |
 | `status` | Legge il resoconto locale dell'ultima run, anche interrotta |
@@ -332,11 +354,15 @@ Il controllo remoto non modifica il cloud e non verifica il contenuto o la recup
 ```sh
 macbackup preview --local
 macbackup preview --local --json
+macbackup preview --target google
+macbackup preview --target google --simulate
 ```
 
 La modalità locale mostra i percorsi e la loro classificazione locale, i motivi di esclusione e gli avvisi. Le inclusioni esatte di nomi protetti nell'area normale sono evidenziate. Un file bloccato da explicit-only riporta anche il pattern responsabile nel risultato JSON e nella spiegazione individuale. Non confronta il cloud né stima quanti byte restano da trasferire. Se la scansione trova errori, non presenta le voci parziali come un piano valido. Per una directory esclusa mostra il sottoalbero senza visitarne tutti i file: il numero degli elementi saltati non è un conteggio completo dei discendenti esclusi.
 
-La modalità `preview --target google` esegue il dry-run remoto e riporta per destinazione e area i file selezionati, le archiviazioni dovute a cancellazioni locali e quelle dovute alla policy. Per queste ultime mostra percorso, nuova classificazione, motivo e regola attuale, se disponibile. Legge i contenuti locali necessari al confronto, ma non modifica il cloud. Non elenca necessariamente tutte le future sostituzioni dei file modificati. Se il totale delle archiviazioni supera `max_delete`, l'anteprima lo segnala; una `run` con la stessa selezione si fermerà prima dei trasferimenti.
+La modalità `preview --target google` legge gli inventari correnti del cloud e prepara il piano delle archiviazioni senza confrontare i contenuti né simulare trasferimenti. Per ogni destinazione e area riporta i file selezionati, le archiviazioni dovute a cancellazioni locali e quelle dovute alla policy, con percorso, nuova classificazione, motivo e regola attuale quando disponibile. Se il totale delle archiviazioni supera `max_delete`, l'anteprima lo segnala; una `run` con la stessa selezione si fermerà prima dei trasferimenti. Questo piano rapido non dice quali file selezionati andrebbero caricati e non rileva errori che emergerebbero soltanto dal confronto dei contenuti o durante il trasferimento.
+
+Aggiungendo `--simulate` si conserva l'anteprima approfondita, più lenta: dopo il piano, `rclone cryptcheck` confronta i file privati selezionati già presenti in `private/current` e rclone simula la sincronizzazione quando serve. La barra del confronto private mostra quanti file sono terminati sul totale; quella del dry run mostra il tempo trascorso, non una percentuale di file. Anche la simulazione plain può richiedere tempo. Questo non equivale a `macbackup verify`. Entrambe le modalità di preview sono in sola lettura; interromperle con `Ctrl-C` non modifica il cloud. La fase attiva della simulazione è scritta su stderr anche senza terminale interattivo. `--simulate` richiede `--target`.
 
 La modalità locale non accede al cloud e non scrive un resoconto: stampa il risultato.
 

@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.12.8"
+VERSION = "0.14.0"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -79,6 +79,7 @@ ITALIAN_TO_ENGLISH = {
     'Nome non rappresentabile in': 'Name cannot be represented in',
     'Icon\\r deve essere un file regolare.': 'Icon\\r must be a regular file.',
     'Scansione locale': 'Local scan', 'Preparazione': 'Preparing',
+    'Anteprima ': 'Preview ', 'Confronto privato ': 'Comparing private ',
     'Ricerca versioni': 'Searching versions', 'Ricerca copie per forget': 'Searching copies for forget',
     'Ricerca versione da recuperare': 'Searching for version to restore',
     'Recupero file': 'Restoring file', 'Verifica copia recuperata': 'Checking restored copy',
@@ -104,6 +105,8 @@ ITALIAN_TO_ENGLISH = {
     'Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.':
         'Remote access and types checked; inventories read without changing the cloud.',
     'Anteprima, nessuna modifica cloud.': 'Preview; no cloud changes.',
+    'Piano basato sulla selezione locale e sugli inventari current; differenze di contenuto non verificate. Nessuna modifica cloud.':
+        'Plan based on local selection and current inventories; content differences not checked. No cloud changes.',
     'Esiti distinti per destinazione e area.': 'Results separated by target and area.',
     'Trasferimenti: conteggio non disponibile.': 'Transfers: count unavailable.',
     'Archiviati per policy:': 'Archived due to policy:',
@@ -174,12 +177,31 @@ ITALIAN_TO_ENGLISH = {
         'settings.toml: private_directory_names requires literal directory names.',
     'settings.toml: ignored_file_names richiede nomi letterali di file.':
         'settings.toml: ignored_file_names requires literal file names.',
+    'settings.toml: private_directory_names contiene nomi duplicati.':
+        'settings.toml: private_directory_names contains duplicate names.',
+    'settings.toml: ignored_file_names contiene nomi duplicati.':
+        'settings.toml: ignored_file_names contains duplicate names.',
+    'percorso ripetuto:': 'duplicate path:',
+    'sospeso da': 'suspended by',
+    'tipo non coerente; previsto directory con / finale.':
+        'type mismatch; directory requires a trailing /.',
+    'tipo non coerente; previsto file o symlink senza / finale.':
+        'type mismatch; file or symlink must not have a trailing /.',
+    'regole ridondanti.': 'redundant rules.',
+    'protezioni sovrapposte.': 'overlapping protections.',
+    'pattern ridondanti.': 'redundant patterns.',
+    'pattern parzialmente sovrapposti.': 'partially overlapping patterns.',
+    'prevale su .gitignore': 'overrides .gitignore',
     'settings.toml: use_gitignore deve essere true o false.':
         'settings.toml: use_gitignore must be true or false.',
     'settings.toml: schema_version deve essere 1.':
         'settings.toml: schema_version must be 1.',
     ": ammessi soltanto nomi e '*'; nessun percorso o altro operatore.":
         ": only names and '*' are allowed; no paths or other operators.",
+    ": ammessi soltanto nomi e '*', con '/' finale per le directory.":
+        ": only names and '*' are allowed, with a trailing '/' for directories.",
+    'Negli elenchi, directory con / finale; file e symlink senza /.':
+        'In path lists, directories need a trailing /; files and symlinks do not.',
     ": la radice '/' non è ammessa.": ": root '/' is not allowed.",
     'Le icone Finder richiedono macOS.': 'Finder icons require macOS.',
     'Metadato icona oltre 64 MiB: operazione bloccata.': 'Icon metadata exceeds 64 MiB; operation blocked.',
@@ -377,6 +399,8 @@ ITALIAN_TO_ENGLISH = {
     'mostra la selezione locale senza accesso cloud': 'show local selection without cloud access',
     'confronta il cloud in sola lettura e mostra le archiviazioni previste':
         'read the cloud and show planned archives',
+    'esegue anche cryptcheck e la simulazione rclone dei trasferimenti':
+        'also run cryptcheck and an rclone transfer dry run',
     'stampa il piano in JSON': 'print plan as JSON',
     'esegue il backup; richiede destinazioni abilitate e sorgenti valide':
         'run backup; requires enabled targets and valid sources',
@@ -459,6 +483,7 @@ ITALIAN_TO_ENGLISH = {
     ' diversi ': ' different ', ' mancanti ': ' missing ',
     ' errori ': ' errors ',
     'check --target richiede anche --remote.': 'check --target also requires --remote.',
+    'preview --simulate richiede --target.': 'preview --simulate requires --target.',
     'Per applicare entro un\'ora:': 'To apply within one hour:',
     ' in sola lettura: ': ' read-only at: ',
     'Montaggio terminato: ': 'Mount ended: ',
@@ -714,6 +739,71 @@ class Rule:
 
 
 @dataclass(frozen=True)
+class NamePattern:
+    value: str
+    directory: bool
+    line: int
+
+    def matches(self, name: str) -> bool:
+        return fnmatch.fnmatchcase(name.casefold(), self.value.casefold())
+
+    @property
+    def display(self) -> str:
+        return self.value + ('/' if self.directory else '')
+
+
+def _glob_states(pattern: str, states: frozenset[int]) -> frozenset[int]:
+    expanded = set(states)
+    for position in sorted(states):
+        while position < len(pattern) and pattern[position] == '*':
+            position += 1
+            expanded.add(position)
+    return frozenset(expanded)
+
+
+def _glob_step(pattern: str, states: frozenset[int], char: str) -> frozenset[int]:
+    following = set()
+    for position in states:
+        if position == len(pattern):
+            continue
+        if pattern[position] == '*':
+            following.add(position)
+        elif pattern[position] == char:
+            following.add(position + 1)
+    return _glob_states(pattern, frozenset(following))
+
+
+def _glob_relation(first: str, second: str) -> tuple[bool, bool, bool]:
+    """Return overlap, first subset of second, second subset of first for * globs."""
+    first, second = first.casefold(), second.casefold()
+    alphabet = set(first + second) - {'*'}
+    other = '\0'
+    while other in alphabet:
+        other = chr(ord(other) + 1)
+    alphabet.add(other)
+    initial = (_glob_states(first, frozenset({0})),
+               _glob_states(second, frozenset({0})))
+    pending = [initial]
+    seen = {initial}
+    first_subset = second_subset = True
+    intersection = False
+    while pending:
+        left, right = pending.pop()
+        left_accept, right_accept = len(first) in left, len(second) in right
+        intersection |= left_accept and right_accept
+        if left_accept and not right_accept:
+            first_subset = False
+        if right_accept and not left_accept:
+            second_subset = False
+        for char in alphabet:
+            successor = (_glob_step(first, left, char), _glob_step(second, right, char))
+            if successor not in seen:
+                seen.add(successor)
+                pending.append(successor)
+    return intersection, first_subset, second_subset
+
+
+@dataclass(frozen=True)
 class Decision:
     action: str
     reason: str
@@ -784,7 +874,24 @@ class Policy:
         self.state_physical = Path(os.path.realpath(self.state_dir))
         self.plain = self._rules("plain-paths.txt")
         self.private = self._rules("private-paths.txt")
-        self.excluded = self._rules("exclude-paths.txt", exclusions=True)
+        self.excluded = self._rules("exclude-paths.txt")
+        self.warnings: list[str] = []
+        paths: dict[Path, Rule] = {}
+        for rule in self.plain + self.private + self.excluded:
+            prior = paths.get(rule.path)
+            if prior is not None:
+                raise ConfigError(f'{prior.source}:{prior.line} e {rule.source}:{rule.line}: '
+                                  f'percorso ripetuto: {rule.path}')
+            paths[rule.path] = rule
+        for root in self.roots:
+            ancestor = next((excluded for excluded in self.excluded
+                             if excluded.directory and excluded.path != root.path
+                             and inside(root.path, excluded.path)), None)
+            if ancestor is not None:
+                self.warnings.append(
+                    f'{root.source}:{root.line}: {root.path} sospeso da '
+                    f'{ancestor.source}:{ancestor.line}: {ancestor.path}.'
+                )
         try:
             import tomllib
         except ImportError as exc:
@@ -812,6 +919,8 @@ class Policy:
             for name in names
         ):
             raise ConfigError('settings.toml: private_directory_names richiede nomi letterali di directory.')
+        if len({name.casefold() for name in names}) != len(names):
+            raise ConfigError('settings.toml: private_directory_names contiene nomi duplicati.')
         self.private_directory_names = {name.casefold() for name in names}
         ignored = policy_settings.get('ignored_file_names', [])
         if not isinstance(ignored, list) or any(
@@ -822,25 +931,55 @@ class Policy:
             for name in ignored
         ):
             raise ConfigError('settings.toml: ignored_file_names richiede nomi letterali di file.')
+        if len({name.casefold() for name in ignored}) != len(ignored):
+            raise ConfigError('settings.toml: ignored_file_names contiene nomi duplicati.')
         self.ignored_file_names = {name.casefold() for name in ignored}
         use_gitignore = policy_settings.get('use_gitignore', False)
         if type(use_gitignore) is not bool:
             raise ConfigError('settings.toml: use_gitignore deve essere true o false.')
-        self.gitignore = GitIgnoreMatcher() if use_gitignore else None
-        self.patterns = []
+        self.patterns: list[NamePattern] = []
         for number, pattern in read_lines(config_dir / PATTERN_FILE):
+            directory = pattern.endswith('/')
+            name = pattern[:-1] if directory else pattern
             invalid = (
-                "/" in pattern or "**" in pattern
+                not name or "/" in name or "**" in name
                 or any(char in pattern for char in "?[]{}\\")
                 or pattern.startswith(("+", "-"))
                 or any(ord(char) < 32 or ord(char) == 127 for char in pattern)
             )
             if invalid:
                 raise ConfigError(
-                    f"{PATTERN_FILE}:{number}: ammessi soltanto nomi e '*'; "
-                    "nessun percorso o altro operatore."
+                    f"{PATTERN_FILE}:{number}: ammessi soltanto nomi e '*', "
+                    "con '/' finale per le directory."
                 )
-            self.patterns.append(pattern)
+            candidate = NamePattern(name, directory, number)
+            if directory:
+                for private_name in names:
+                    if candidate.matches(private_name):
+                        raise ConfigError(f'{PATTERN_FILE}:{number} ({candidate.display}) e '
+                                          f'settings.toml:[policy].private_directory_names '
+                                          f'({private_name}): regole ridondanti.')
+            else:
+                for ignored_name in ignored:
+                    if candidate.matches(ignored_name):
+                        raise ConfigError(f'{PATTERN_FILE}:{number} ({candidate.display}) e '
+                                          f'settings.toml:[policy].ignored_file_names '
+                                          f'({ignored_name}): protezioni sovrapposte.')
+            for prior in self.patterns:
+                if prior.directory != candidate.directory:
+                    continue
+                intersects, prior_subset, candidate_subset = _glob_relation(
+                    prior.value, candidate.value)
+                if prior_subset or candidate_subset:
+                    raise ConfigError(f'{PATTERN_FILE}:{prior.line} ({prior.display}) e '
+                                      f'{PATTERN_FILE}:{number} ({candidate.display}): '
+                                      'pattern ridondanti.')
+                if intersects:
+                    self.warnings.append(f'{PATTERN_FILE}:{prior.line} ({prior.display}) e '
+                                         f'{PATTERN_FILE}:{number} ({candidate.display}): '
+                                         'pattern parzialmente sovrapposti.')
+            self.patterns.append(candidate)
+        self.gitignore = GitIgnoreMatcher() if use_gitignore else None
         self.credential_roots = (
             home / ".config/rclone",
             home / "Library/Preferences/rclone",
@@ -850,8 +989,9 @@ class Policy:
             *(Path(os.path.realpath(root)) for root in self.credential_roots),
         })
 
-    def _rules(self, filename: str, exclusions: bool = False) -> list[Rule]:
+    def _rules(self, filename: str) -> list[Rule]:
         result = []
+        seen: dict[Path, int] = {}
         for line, value in read_lines(self.config_dir / filename):
             try:
                 path = absolute_path(value)
@@ -859,13 +999,23 @@ class Policy:
                 raise ConfigError(f"{filename}:{line}: {exc}") from exc
             if path == Path("/"):
                 raise ConfigError(f"{filename}:{line}: la radice '/' non è ammessa.")
+            if path in seen:
+                raise ConfigError(f'{filename}:{seen[path]} e {filename}:{line}: '
+                                  f'percorso ripetuto: {path}')
+            seen[path] = line
+            directory = value.endswith('/')
             try:
                 info = path.lstat()
-                directory = stat.S_ISDIR(info.st_mode)
-            except OSError:
-                directory = value.endswith("/")
-            # Exclusions match a complete subtree, even when the source is absent.
-            result.append(Rule(path, exclusions or directory, filename, line))
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise ConfigError(f'{filename}:{line}: {path}: {exc}') from exc
+            else:
+                if stat.S_ISDIR(info.st_mode) != directory:
+                    expected = 'directory con / finale' if stat.S_ISDIR(info.st_mode) else 'file o symlink senza / finale'
+                    raise ConfigError(f'{filename}:{line}: {path}: tipo non coerente; '
+                                      f'previsto {expected}.')
+            result.append(Rule(path, directory, filename, line))
         return result
 
     @property
@@ -906,38 +1056,41 @@ class Policy:
                 break
             protected_ancestor = next(
                 (pattern for pattern in self.patterns
-                 if fnmatch.fnmatchcase(ancestor.name.casefold(), pattern.casefold())), None
+                 if pattern.directory and pattern.matches(ancestor.name)), None
             )
             if (protected_ancestor and ancestor.name.casefold() not in self.private_directory_names
                     and not any(rule.path == ancestor for rule in self.roots)):
                 return Decision(
                     "skip", "Directory antenata protetta: richiede inclusione esatta.",
-                    protected_pattern=protected_ancestor,
+                    protected_pattern=protected_ancestor.display,
                 )
         protected = next(
             (pattern for pattern in self.patterns
-             if fnmatch.fnmatchcase(path.name.casefold(), pattern.casefold())), None
+             if pattern.directory == directory and pattern.matches(path.name)), None
         )
         if protected and not exact and not (directory and path.name.casefold() in self.private_directory_names):
             return Decision(
                 "skip", "Richiede un'inclusione esatta del percorso (explicit-only).",
-                protected_pattern=protected,
+                protected_pattern=protected.display,
             )
         if check_gitignore and self.gitignore is not None and not exact and not private_by_name:
             ignored, source = self.gitignore.match(path)
             if ignored:
                 return Decision('skip', 'Escluso da .gitignore.', source)
         if private:
-            return Decision("private", "Inclusione privata.", str(private.path), protected, exact)
+            return Decision("private", "Inclusione privata.", str(private.path),
+                            protected.display if protected else None, exact)
         if private_by_name:
             return Decision("private", "Directory cifrata per nome.",
-                            'settings.toml:[policy].private_directory_names', protected, exact)
+                            'settings.toml:[policy].private_directory_names',
+                            protected.display if protected else None, exact)
         if not directory and any(inside(path, root) or inside(physical, root) for root in self.credential_roots):
             return Decision(
                 "error", "Configurazione rclone selezionata in chiaro: aggiungere "
                 "il percorso a private-paths.txt o escluderlo.", str(plain.path)
             )
-        return Decision("plain", "Inclusione normale.", str(plain.path), protected, exact)
+        return Decision("plain", "Inclusione normale.", str(plain.path),
+                        protected.display if protected else None, exact)
 
 
 def file_kind(info: os.stat_result) -> str:
@@ -1074,7 +1227,7 @@ def restore_icon(file: Path, folder: Path, replace: bool) -> dict:
 
 
 def scan_policy(policy: Policy) -> Scan:
-    result = Scan([], [], [])
+    result = Scan([], [], list(policy.warnings))
     seen: set[Path] = set()
 
     def visit(path: Path, parent_fd: int | None = None, child: str | None = None) -> None:
@@ -1096,6 +1249,18 @@ def scan_policy(policy: Policy) -> Scan:
                     return
                 kind = 'finder-icon'
             decision = policy.decide(path, directory=kind == "directory")
+            if (policy.gitignore is not None and decision.action in ('plain', 'private')
+                    and (any(rule.path == path for rule in policy.roots)
+                         or (kind == 'directory'
+                             and path.name.casefold() in policy.private_directory_names
+                             and decision.action == 'private'))):
+                ignored, source = policy.gitignore.match(path)
+                if ignored:
+                    direct = next((rule for rule in policy.roots if rule.path == path), None)
+                    overriding = (f'{direct.source}:{direct.line}' if direct else
+                                  'settings.toml:[policy].private_directory_names')
+                    result.warnings.append(f'{path}: {overriding} prevale su '
+                                           f'.gitignore {source}.')
             if decision.action == "error":
                 result.errors.append(f"{path}: {decision.reason}")
                 return
@@ -1230,12 +1395,12 @@ def split_layout(policy: Policy, root: Path) -> dict:
 
 def init_config(directory: Path, home: Path) -> list[str]:
     templates = {
-        "plain-paths.txt": "# Percorsi assoluti da salvare consultabili; nessuna inclusione attiva.\n"
+        "plain-paths.txt": "# Directory con / finale; file e symlink senza /. Nessuna inclusione attiva.\n"
         f"# {home}/Desktop/\n# {home}/Documents/\n# {home}/.config/\n# {home}/.dotfiles/\n",
-        "private-paths.txt": "# Percorsi assoluti da salvare cifrati; nessuna inclusione attiva.\n"
+        "private-paths.txt": "# Directory con / finale; file e symlink senza /. Nessuna inclusione attiva.\n"
         f"# {home}/.ssh/\n# {home}/.config/rclone/\n",
-        "exclude-paths.txt": "# Esclusioni assolute, prevalgono sulle inclusioni esatte; nessuna esclusione attiva.\n",
-        PATTERN_FILE: "# File e cartelle ammessi soltanto tramite inclusione esatta, anche nell'area privata.\n.env\n.env.*\n",
+        "exclude-paths.txt": "# Esclusioni assolute; directory con / finale, file senza /. Nessuna esclusione attiva.\n",
+        PATTERN_FILE: "# Nomi di directory con / finale; nomi di file/symlink senza /. Inclusione esatta richiesta.\n.env\n.env.*\n.env/\n.env.*/\n",
     }
     templates["settings.toml"] = SETTINGS_TEMPLATE
     if any(os.path.lexists(directory / name) for name in templates):
@@ -1742,10 +1907,25 @@ def mount_input_wait(input_fd: int | None, timeout: float) -> None:
 
 
 @contextmanager
-def operation_activity(label: str, total: int | None = None):
+def operation_activity(label: str, total: int | None = None,
+                       report_non_tty: bool = False):
     """Show a TTY progress bar and discard input during a long phase."""
     if not sys.stderr.isatty():
-        yield None
+        if not report_non_tty:
+            yield None
+            return
+        pulse = MountPulse(label, total)
+        outcome = 'completato'
+        try:
+            yield pulse
+        except KeyboardInterrupt:
+            outcome = 'interrotto'
+            raise
+        except BaseException:
+            outcome = 'errore'
+            raise
+        finally:
+            pulse.done(getattr(pulse, 'outcome', outcome))
         return
     with discard_mount_input() as input_fd:
         pulse = MountPulse(label, total)
@@ -2194,7 +2374,7 @@ def write_manifest(directory: Path, names: list[str]) -> Path:
     return path
 
 
-def private_changes(plan: dict, state: Path) -> list[str]:
+def private_changes(plan: dict, state: Path, pulse: MountPulse | None = None) -> list[str]:
     local = set(plan["local"])
     existing = set(plan["existing"])
     to_check = local & existing
@@ -2205,6 +2385,8 @@ def private_changes(plan: dict, state: Path) -> list[str]:
             manifest = write_manifest(directory, sorted(to_check))
             report = directory / "report"
             report.touch(mode=0o600)
+            if pulse is not None:
+                pulse.report_path = report
             rclone_call(
                 "cryptcheck", plan.get('source', '/'), remote_join(plan["root"], "current"),
                 "--files-from0", str(manifest), "--links", "--one-way",
@@ -2240,7 +2422,16 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
                     json.dump(icon_snapshot(entry), stream, sort_keys=True, ensure_ascii=False, indent=2)
             return perform_sync(plan | {'source': str(source)}, state, run_id, limit,
                                 dry_run, home, progress_depth)
-    names = private_changes(plan, state) if plan["area"] == "private" else plan["files"]
+    if plan["area"] == "private":
+        comparison = f'Confronto privato {plan["target"]}/{plan["area"]}/{plan.get("kind", "files")}'
+        total = len(set(plan['local']) & set(plan['existing']))
+        if total:
+            with operation_activity(comparison, total, report_non_tty=True) as pulse:
+                names = private_changes(plan, state, pulse)
+        else:
+            names = private_changes(plan, state)
+    else:
+        names = plan["files"]
     if not names:
         return {'transfers': 0, 'bytes': 0, 'checks': 0, 'listed': 0,
                 'renames': 0, 'serverSideMoves': 0, 'serverSideMoveBytes': 0} if not dry_run else None
@@ -2256,7 +2447,9 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
         arguments.append("--ignore-times" if plan["area"] == "private" else "--checksum")
         if dry_run:
             arguments.append("--dry-run")
-            rclone_call(*arguments)
+            label = f'Anteprima {plan["target"]}/{plan["area"]}/{plan.get("kind", "files")}'
+            with operation_activity(label, report_non_tty=True):
+                rclone_call(*arguments)
             return None
         arguments.extend(("--stats", "5s", "--stats-file-name-length", "0",
                           "--stats-log-level", "NOTICE", "--use-json-log"))
@@ -2285,9 +2478,14 @@ def transport_operation(args, policy: Policy) -> int:
                                   check_conflicts=args.command == 'check')
         if args.command == "check":
             result = {"scope": "remote-read-only", "ok": True,
-                      "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud."}
-            print(json.dumps(result, ensure_ascii=False) if getattr(args, "json", False)
-                  else ui('Controllo remoto completato.', 'success') + ' ' + result['note'])
+                      "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.",
+                      "warnings": scan.warnings}
+            if getattr(args, "json", False):
+                print(json.dumps(result, ensure_ascii=False))
+            else:
+                print(ui('Controllo remoto completato.', 'success') + ' ' + result['note'])
+                for warning in scan.warnings:
+                    print(ui('AVVISO:', 'warning') + ' ' + warning)
             return 0
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
         results = []
@@ -2304,6 +2502,10 @@ def transport_operation(args, policy: Policy) -> int:
             if args.command == 'run':
                 print(f"{ui('Avvio', 'info', sys.stderr)} {plan['target']}/{plan['area']}/{result['kind']}: "
                       f"{plan['selected']} elementi selezionati.", file=sys.stderr, flush=True)
+            if args.command == 'preview' and not args.simulate:
+                result['ok'] = True
+                results.append(result)
+                continue
             try:
                 stats = perform_sync(plan, policy.state_dir, run_id, limit,
                                      args.command == "preview", policy.home,
@@ -2328,8 +2530,11 @@ def transport_operation(args, policy: Policy) -> int:
                     result.update(transfer_metrics(getattr(exc, 'stats', None), False))
                 result.update(ok=False, error=str(exc))
             results.append(result)
+        preview_note = ("Anteprima, nessuna modifica cloud." if args.simulate else
+                        "Piano basato sulla selezione locale e sugli inventari current; "
+                        "differenze di contenuto non verificate. Nessuna modifica cloud.") if args.command == 'preview' else None
         data = {"operation": args.command, "run_id": run_id, "ok": all(item["ok"] for item in results),
-                "results": results, "note": "Anteprima, nessuna modifica cloud." if args.command == "preview" else "Esiti distinti per destinazione e area."}
+                "results": results, "note": preview_note if preview_note is not None else "Esiti distinti per destinazione e area."}
         if args.command == "run":
             fd, temporary = tempfile.mkstemp(prefix="status-", dir=policy.state_dir)
             try:
@@ -3108,7 +3313,8 @@ def localize_parser(parser: argparse.ArgumentParser) -> None:
 
 def make_parser() -> argparse.ArgumentParser:
     parser = LocalizedArgumentParser(
-        description="macbackup: selezione protetta, anteprima e backup tramite rclone."
+        description="macbackup: selezione protetta, anteprima e backup tramite rclone.",
+        epilog='Negli elenchi, directory con / finale; file e symlink senza /.'
     )
     parser.add_argument("--version", action="version", version=f"macbackup {VERSION}")
     parser.add_argument("--config-dir", metavar="PATH", help="directory assoluta con elenchi e settings.toml")
@@ -3129,6 +3335,8 @@ def make_parser() -> argparse.ArgumentParser:
     mode = preview.add_mutually_exclusive_group(required=True)
     mode.add_argument("--local", action="store_true", help="mostra la selezione locale senza accesso cloud")
     mode.add_argument("--target", choices=("google", "proton", "all"), help="confronta il cloud in sola lettura e mostra le archiviazioni previste")
+    preview.add_argument("--simulate", action="store_true",
+                         help="esegue anche cryptcheck e la simulazione rclone dei trasferimenti")
     preview.add_argument("--json", action="store_true", help="stampa il piano in JSON")
     run = commands.add_parser("run", help="esegue il backup; richiede destinazioni abilitate e sorgenti valide")
     run.add_argument("--target", choices=("google", "proton", "all"), required=True,
@@ -3253,6 +3461,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if data['ok'] else 1
         if args.command == "check" and args.target and not args.remote:
             raise ConfigError("check --target richiede anche --remote.")
+        if args.command == 'preview' and args.local and args.simulate:
+            raise ConfigError('preview --simulate richiede --target.')
         if args.command == "run" or (args.command == "preview" and not args.local) or (args.command == "check" and args.remote):
             if args.command == "check" and args.target is None:
                 args.target = "google"

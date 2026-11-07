@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import runpy
+import shlex
 import shutil
 import subprocess
 import sys
@@ -43,11 +44,20 @@ class LocalSelectorTests(unittest.TestCase):
         path.write_text(contents)
         return path
 
+    def test_init_protects_env_files_and_directories_separately(self):
+        fresh = self.home / '.config/fresh-macbackup'
+        init_config(fresh, self.home)
+        patterns = (fresh / 'explicit-only-patterns.txt').read_text().splitlines()
+        self.assertTrue({'.env', '.env.*', '.env/', '.env.*/'}.issubset(patterns))
+
     def set_rules(self, plain=(), private=(), excluded=(), patterns=(".env", ".env.*")):
         for filename, values in [
             ("plain-paths.txt", plain), ("private-paths.txt", private),
             ("exclude-paths.txt", excluded), ("explicit-only-patterns.txt", patterns),
         ]:
+            if filename != 'explicit-only-patterns.txt':
+                values = [str(value) + ('/' if Path(value).is_dir() and not Path(value).is_symlink() else '')
+                          for value in values]
             (self.config / filename).write_text("\n".join(map(str, values)) + "\n")
 
     def policy(self):
@@ -81,16 +91,17 @@ class LocalSelectorTests(unittest.TestCase):
         self.assertEqual(self.action(self.env), "skip")
         self.assertEqual(self.action(self.normal), "private")
 
-    def test_private_wins_when_both_exact_entries_exist(self):
+    def test_identical_plain_private_entries_are_rejected(self):
         self.set_rules(plain=[self.project, self.env], private=[self.env])
-        self.assertEqual(self.action(self.env), "private")
+        with self.assertRaisesRegex(ConfigError, 'percorso ripetuto'):
+            self.policy()
 
     def test_exact_plain_entry_cannot_downgrade_private_parent(self):
         self.set_rules(plain=[self.env], private=[self.project])
         self.assertEqual(self.action(self.env), "private")
 
     def test_absolute_exclusion_wins_over_exact_entries(self):
-        self.set_rules(plain=[self.env], private=[self.env], excluded=[self.project])
+        self.set_rules(plain=[self.env], excluded=[self.project])
         self.assertEqual(self.action(self.env), "skip")
         self.assertFalse(self.scan().errors)
 
@@ -121,6 +132,7 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_patterns_apply_to_directory_names_and_prune_descendants(self):
         path = self.write(self.project / ".env.folder/ordinary.txt")
+        self.set_rules(plain=[self.project], patterns=('.env', '.env.*', '.env.*/'))
         self.assertEqual(self.policy().decide(path.parent, directory=True).action, "skip")
         entries = {entry.path: entry for entry in self.scan().entries}
         self.assertEqual(entries[str(path.parent)].kind, "excluded-subtree")
@@ -130,7 +142,7 @@ class LocalSelectorTests(unittest.TestCase):
         files = [self.write(self.project / name / "package.txt")
                  for name in ("node_modules", ".venv", "venv", "myenv")]
         self.set_rules(plain=[self.project],
-                       patterns=(".env", ".env.*", "node_modules", ".venv", "venv", "myenv"))
+                       patterns=(".env", ".env.*", "node_modules/", ".venv/", "venv/", "myenv/"))
         entries = {entry.path: entry for entry in self.scan().entries}
         for file in files:
             with self.subTest(file=file):
@@ -141,7 +153,7 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_git_history_name_is_protected_without_hiding_working_tree(self):
         object_file = self.write(self.project / '.git/objects/ab/cdef')
-        self.set_rules(plain=[self.project], patterns=('.env', '.env.*', '.git'))
+        self.set_rules(plain=[self.project], patterns=('.env', '.env.*', '.git/'))
         entries = {entry.path: entry for entry in self.scan().entries}
         self.assertEqual(entries[str(object_file.parent.parent.parent)].kind, 'excluded-subtree')
         self.assertNotIn(str(object_file), entries)
@@ -171,10 +183,10 @@ class LocalSelectorTests(unittest.TestCase):
         entries = {entry.path: entry for entry in self.scan().entries}
         self.assertEqual(entries[str(object_file)].decision.action, 'plain')
         self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'plain')
-        self.set_rules(plain=[git_dir], private=[git_dir], patterns=('.env', '.env.*', '.git'))
+        self.set_rules(private=[git_dir], patterns=('.env', '.env.*', '.git'))
         self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'private')
         self.assertEqual(self.action(object_file), 'private')
-        self.set_rules(plain=[git_dir], private=[git_dir], excluded=[git_dir],
+        self.set_rules(plain=[git_dir], excluded=[self.project],
                        patterns=('.env', '.env.*', '.git'))
         self.assertEqual(self.policy().decide(git_dir, directory=True).action, 'skip')
         self.assertEqual(self.action(object_file), 'skip')
@@ -192,9 +204,9 @@ class LocalSelectorTests(unittest.TestCase):
         self.assertEqual(entries[str(unwanted)].decision.action, 'plain')
         self.assertEqual(entries[str(spaced)].decision.action, 'skip')
         self.assertEqual(entries[str(self.normal)].decision.action, 'plain')
-        self.set_rules(plain=[self.project, unwanted], private=[unwanted])
+        self.set_rules(plain=[self.project], private=[unwanted])
         self.assertEqual(self.action(unwanted), 'private')
-        self.set_rules(plain=[self.project, unwanted], private=[unwanted], excluded=[unwanted])
+        self.set_rules(plain=[self.project], private=[unwanted], excluded=[self.project.parent])
         self.assertEqual(self.action(unwanted), 'skip')
 
     def test_invalid_ignored_file_names_fail_closed(self):
@@ -289,15 +301,15 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_exact_directory_inclusion_overrides_its_protected_name(self):
         file = self.write(self.project / "node_modules/package.txt")
-        self.set_rules(plain=[self.project, file.parent], patterns=("node_modules",))
+        self.set_rules(plain=[self.project, file.parent], patterns=("node_modules/",))
         entries = {entry.path: entry for entry in self.scan().entries}
         self.assertEqual(entries[str(file)].decision.action, "plain")
         self.assertEqual(self.action(file), "plain")
 
     def test_absolute_exclusion_still_wins_over_protected_directory_override(self):
         file = self.write(self.project / "node_modules/package.txt")
-        self.set_rules(plain=[self.project, file.parent], excluded=[file.parent],
-                       patterns=("node_modules",))
+        self.set_rules(plain=[self.project, file.parent], excluded=[self.project.parent],
+                       patterns=("node_modules/",))
         entries = {entry.path: entry for entry in self.scan().entries}
         self.assertEqual(entries[str(file.parent)].kind, "excluded-subtree")
         self.assertNotIn(str(file), entries)
@@ -313,6 +325,117 @@ class LocalSelectorTests(unittest.TestCase):
                 self.set_rules(patterns=[pattern])
                 with self.assertRaises(ConfigError):
                     self.policy()
+
+    def test_typed_patterns_distinguish_file_from_directory_with_same_name(self):
+        directory = self.project / 'cache'
+        child = self.write(directory / 'data.txt')
+        file = self.write(self.project / 'other/cache')
+        self.set_rules(plain=[self.project], patterns=['cache/'])
+        scan = self.scan()
+        entries = {entry.path: entry for entry in scan.entries}
+        self.assertEqual(entries[str(directory)].kind, 'excluded-subtree')
+        self.assertNotIn(str(child), entries)
+        self.assertEqual(entries[str(file)].decision.action, 'plain')
+        self.set_rules(plain=[self.project], patterns=['cache'])
+        scan = self.scan()
+        entries = {entry.path: entry for entry in scan.entries}
+        self.assertEqual(entries[str(child)].decision.action, 'plain')
+        self.assertEqual(entries[str(file)].decision.action, 'skip')
+
+    def test_declared_path_type_must_match_existing_object(self):
+        self.set_rules(plain=[self.project])
+        (self.config / 'plain-paths.txt').write_text(str(self.project) + '\n')
+        with self.assertRaisesRegex(ConfigError, 'directory con / finale'):
+            self.policy()
+        (self.config / 'plain-paths.txt').write_text(str(self.normal) + '/\n')
+        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+            self.policy()
+        alias = self.project / 'directory-link'
+        alias.symlink_to(self.project, target_is_directory=True)
+        (self.config / 'plain-paths.txt').write_text(str(alias) + '/\n')
+        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+            self.policy()
+
+    def test_future_exclusion_type_is_checked_when_it_appears(self):
+        future = self.project / 'future'
+        (self.config / 'exclude-paths.txt').write_text(str(future) + '/\n')
+        self.assertFalse(self.scan().errors)
+        future.write_text('synthetic file')
+        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+            self.policy()
+
+    def test_normalized_duplicate_paths_are_config_errors(self):
+        (self.config / 'plain-paths.txt').write_text(
+            str(self.project) + '/\n' + str(self.project / '.') + '/\n')
+        with self.assertRaisesRegex(ConfigError, 'percorso ripetuto'):
+            self.policy()
+        self.set_rules(plain=[self.project], private=[self.project])
+        with self.assertRaisesRegex(ConfigError, 'plain-paths.txt:1 e private-paths.txt:1'):
+            self.policy()
+
+    def test_name_policy_case_only_duplicates_are_errors(self):
+        settings = self.config / 'settings.toml'
+        original = settings.read_text()
+        for field, value in [('private_directory_names', '[".git", ".GIT"]'),
+                             ('ignored_file_names', '[".DS_Store", ".ds_store"]')]:
+            with self.subTest(field=field):
+                settings.write_text(original.replace(
+                    f'{field} = {"[]" if field == "private_directory_names" else "[\".DS_Store\"]"}',
+                    f'{field} = {value}'))
+                with self.assertRaisesRegex(ConfigError, 'duplicati'):
+                    self.policy()
+        settings.write_text(original)
+
+    def test_static_name_policy_overlaps_are_errors(self):
+        settings = self.config / 'settings.toml'
+        original = settings.read_text()
+        settings.write_text(original.replace('private_directory_names = []',
+                                             'private_directory_names = [".git"]'))
+        self.set_rules(patterns=['.GIT/'])
+        with self.assertRaisesRegex(ConfigError, 'regole ridondanti'):
+            self.policy()
+        self.set_rules(patterns=['.g*/'])
+        with self.assertRaisesRegex(ConfigError, 'regole ridondanti'):
+            self.policy()
+        settings.write_text(original)
+        self.set_rules(patterns=['.DS_*/'])
+        self.assertFalse(self.scan().errors)
+        self.set_rules(patterns=['.DS_*'])
+        with self.assertRaisesRegex(ConfigError, 'protezioni sovrapposte'):
+            self.policy()
+        self.set_rules(patterns=['.d*'])
+        with self.assertRaisesRegex(ConfigError, 'protezioni sovrapposte'):
+            self.policy()
+
+    def test_complete_pattern_containment_fails_and_partial_overlap_warns(self):
+        self.set_rules(patterns=['node*/', 'node_modules/'])
+        with self.assertRaisesRegex(ConfigError, 'pattern ridondanti'):
+            self.policy()
+        self.set_rules(patterns=['node*/', 'node*modules/'])
+        with self.assertRaisesRegex(ConfigError, 'pattern ridondanti'):
+            self.policy()
+        self.set_rules(patterns=['node*/', '*modules/'])
+        self.assertTrue(any('parzialmente sovrapposti' in warning
+                            for warning in self.scan().warnings))
+
+    @unittest.skipUnless(shutil.which('git'), 'Git is needed for .gitignore matching')
+    def test_gitignore_override_warnings_are_scoped_to_exact_and_named_directory(self):
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'use_gitignore = false', 'use_gitignore = true').replace(
+            'private_directory_names = []', 'private_directory_names = ["secrets"]'))
+        self.write(self.project / '.gitignore', '*.log\nsecrets/\n')
+        exact = self.write(self.project / 'keep.log')
+        self.write(self.project / 'skip.log')
+        self.write(self.project / 'secrets/a.txt')
+        self.write(self.project / 'secrets/b.txt')
+        self.set_rules(plain=[self.project, exact])
+        scan = self.scan()
+        git_warnings = [warning for warning in scan.warnings if '.gitignore' in warning]
+        self.assertEqual(len(git_warnings), 2, git_warnings)
+        self.assertTrue(any('plain-paths.txt:2' in warning for warning in git_warnings))
+        self.assertTrue(any('private_directory_names' in warning for warning in git_warnings))
+        self.assertEqual(self.policy().decide(self.project / 'skip.log').action, 'skip')
 
     def test_relative_dotdot_root_and_control_paths_are_rejected(self):
         for value in ("relative", "~/Desktop", "$HOME/Desktop", "/a/../b", "/", "/a\tb"):
@@ -331,8 +454,10 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_missing_excluded_root_does_not_block_scan(self):
         missing = self.home / "missing"
-        self.set_rules(plain=[missing], excluded=[missing])
-        self.assertFalse(self.scan().errors)
+        self.set_rules(plain=[missing], excluded=[self.home])
+        scan = self.scan()
+        self.assertFalse(scan.errors)
+        self.assertTrue(any('sospeso' in warning for warning in scan.warnings))
 
     def test_symlink_directory_is_preserved_and_never_traversed(self):
         outside = self.write(self.home / "outside/sensitive.txt")
@@ -375,7 +500,7 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_state_is_implicitly_excluded_even_with_exact_entry(self):
         state = self.write(self.home / ".local/state/macbackup/plan.json")
-        self.set_rules(plain=[state], private=[state])
+        self.set_rules(plain=[state])
         self.assertEqual(self.action(state), "skip")
 
     def test_rclone_configuration_must_be_private_or_excluded(self):
@@ -383,7 +508,7 @@ class LocalSelectorTests(unittest.TestCase):
         self.set_rules(plain=[credential.parent])
         self.assertEqual(self.action(credential), "error")
         self.assertTrue(self.scan().errors)
-        self.set_rules(plain=[credential.parent], private=[credential.parent])
+        self.set_rules(private=[credential.parent])
         self.assertEqual(self.action(credential), "private")
         self.assertFalse(self.scan().errors)
 
@@ -472,9 +597,10 @@ class LocalSelectorTests(unittest.TestCase):
         for filename in MODULE["CONFIG_FILES"]:
             self.assertEqual((path / filename).stat().st_mode & 0o777, 0o600)
 
-    def cli(self, *args):
+    def cli(self, *args, extra_env=None):
         env = os.environ.copy()
         env["HOME"] = str(self.home)
+        env.update(extra_env or {})
         return subprocess.run(
             [sys.executable, str(SCRIPT), "--config-dir", str(self.config), *args],
             capture_output=True, text=True, env=env,
@@ -511,6 +637,22 @@ class LocalSelectorTests(unittest.TestCase):
         result = self.cli("check", "--json")
         self.assertEqual(result.returncode, 2)
         self.assertFalse(json.loads(result.stdout)["ok"])
+
+    def test_run_rejects_declared_type_mismatch_before_invoking_rclone(self):
+        (self.config / 'plain-paths.txt').write_text(str(self.project) + '\n')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace('enabled = false', 'enabled = true', 1))
+        executable_dir = self.base / 'bin'
+        executable_dir.mkdir()
+        marker = self.base / 'rclone-invoked'
+        rclone = executable_dir / 'rclone'
+        rclone.write_text('#!/bin/sh\n: > ' + shlex.quote(str(marker)) + '\nexit 77\n')
+        rclone.chmod(0o700)
+        result = self.cli('run', '--target', 'google',
+                          extra_env={'PATH': str(executable_dir)})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('type mismatch', result.stderr)
+        self.assertFalse(marker.exists(), 'rclone must not run for an invalid path type')
 
     def test_cli_preview_routes_exact_env_privately_without_duplicate_plain_copy(self):
         self.set_rules(plain=[self.project], private=[self.env])

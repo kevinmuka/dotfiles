@@ -6,6 +6,19 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-07 — fast remote preview (0.14.0)
+
+- `preview --target` now builds the archive plan from the local selection and cloud `current` inventories, without the expensive content comparison or rclone transfer dry run. It still reports policy and local-deletion archives and whether `max_delete` would be exceeded. It cannot predict changed-file uploads or transfer-only failures.
+- `preview --target ... --simulate` retains the former deeper, read-only comparison and dry run. Activity indicators identify the active target and area, show elapsed time, and count completed private comparisons. JSON stdout remains parseable; progress is on stderr. The English and Italian manuals, help, and Zsh completions describe both modes.
+
+## 2026-11-07 — typed selection rules and overlap validation (0.13.0)
+
+- Path lists now require a trailing `/` for directories and no trailing `/` for files or symlinks. Existing paths with a mismatched declared type fail before cloud access; missing exclusions retain their declared type until they appear. A directly included source covered by an ancestor exclusion is suspended, reported as a warning, and may be absent. Identical normalized paths within or across lists are rejected; distinct overlapping parent and child paths retain their precedence.
+- Explicit-only patterns now declare their type in the same way: `.env` protects files or symlinks, and `node_modules/` protects directories. `init` and the migrated configuration include both file and directory forms of `.env` and `.env.*`, preserving protection for future directories with those names. Name policies remain case-insensitive while absolute paths remain case-sensitive. Case-only duplicates and unsafe overlaps with `private_directory_names` or `ignored_file_names` are rejected. In particular, combining an ignored filename with an explicit-only file pattern could bypass explicit-only's hard-link alias check; the error keeps that protection visible. Fully redundant patterns fail; demonstrable partial overlap warns.
+- When Git ignore processing is enabled, local `check` warns if an exact inclusion overrides an effective ignore rule, or if automatic private-directory routing overrides one. Automatic routing produces at most one warning per directory. Normal ignored paths do not warn, and these overrides do not block a run. An exact directory inclusion still does not grant exact exceptions to its descendants.
+- Remote previews now report the active target, area, and phase after planning. Private comparisons show completed files while `cryptcheck` runs; subsequent rclone dry-run sync phases show elapsed time. Progress stays on stderr so JSON output remains parseable. This does not change preview's read-only behavior.
+- Migrated the local path and pattern lists together. A synthetic test suite exercises the new validation. A read-only comparison of the old and new selectors on the current Mac found 62,571 selected entries in each, with no additions or removals at comparison time. This is a selection comparison, not a cloud verification.
+
 ## 2026-11-06 — verification progress (0.12.8)
 
 - Interactive `verify` displays completed file checks against the selected count for each area and kind. The count includes differences and errors; it may pause during remote listing or large-file checks. JSON fields and verification semantics are unchanged.

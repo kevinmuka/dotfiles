@@ -288,7 +288,7 @@ class MountTests(unittest.TestCase):
             (point / 'current').mkdir(parents=True)
             (point / 'current/file.txt').write_text('cloud file')
         (self.config / 'plain-paths.txt').write_text(
-            str(self.home / 'Desktop') + '\n' + ''.join(str(point) + '\n' for point in points))
+            str(self.home / 'Desktop') + '/\n' + ''.join(str(point) + '/\n' for point in points))
         policy = M['Policy'](self.config, self.home)
         scan = M['scan_policy'](policy)
         self.assertFalse(scan.errors, scan.errors)

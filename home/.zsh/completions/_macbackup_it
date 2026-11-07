@@ -88,7 +88,8 @@ case "$state" in
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
           '(--target)--local[solo selezione locale]' \
-          "(--local)--target=[confronto cloud in sola lettura]:servizio:(google proton all)" \
+          "(--local)--target=[piano cloud delle archiviazioni in sola lettura]:servizio:(google proton all)" \
+          '(--local)--simulate[confronta anche i contenuti privati e simula i trasferimenti]' \
           '--json[output JSON]'
         ;;
       run)

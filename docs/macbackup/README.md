@@ -1,6 +1,6 @@
 # macbackup: user manual
 
-**Documented macbackup version: `0.12.8`.** Check the installed version with `macbackup --version`.
+**Documented macbackup version: `0.14.0`.** Check the installed version with `macbackup --version`.
 
 `macbackup` selects files and directories on a Mac, copies them through rclone, and separates readable files (`plain`) from files encrypted with rclone crypt (`private`). The remote layout mirrors original paths and keeps previous copies in `history`. It is neither a bootable Mac backup nor a consistent snapshot of running applications.
 
@@ -78,7 +78,8 @@ A plain remote such as `gdrive:` accesses the provider. A crypt remote such as `
 - Each line contains one literal absolute path. Blank lines and lines starting with `#` are ignored.
 - Do not quote paths in the lists, even when they contain spaces. Trailing inline comments are unsupported.
 - `~`, `$HOME`, variables, commands, and wildcards are not expanded.
-- A file selects that file. A directory selects descendants recursively, including hidden files, subject to explicit-only and other rules. A trailing slash may indicate a directory without changing precedence.
+- A directory path **must** end in `/`; a file or symlink path **must not**. A type mismatch on an existing path is a configuration error before cloud access. A missing exclusion may name a future path; its declared type is checked when it appears. A directly included missing source is an error unless an ancestor exclusion suspends it.
+- A file or symlink selects only itself. A directory selects descendants recursively, including hidden files, subject to the other rules. A symlink to a directory remains a symlink; its target is not traversed.
 - Relative paths, `..` components, and selecting the entire `/` root are rejected. `/` is only the reference for reconstructing original paths.
 - Names that cannot be represented unambiguously in a line-based list, such as names with newlines, cause an explicit error instead of being silently skipped.
 
@@ -90,20 +91,38 @@ Paths are literal: `[` or `*` inside a filename must not accidentally become an 
 2. `ignored_file_names` skips a matching **file** inherited from a parent directory; an exact file entry in plain or private overrides it. The rule does not apply to a directory of the same name.
 3. A file or directory matching `explicit-only-patterns.txt` requires its complete path directly in plain or private. A parent-directory entry is insufficient; a skipped directory is not traversed. Exception: a directory also matched by `private_directory_names` is traversed and encrypted unless exactly included in plain. Other rules still apply inside it.
 4. With `use_gitignore = true`, `.gitignore` can exclude a path inherited from a parent directory. An exact inclusion and automatic routing via `private_directory_names` override that exclusion. An ignored directory is not traversed.
-5. After these checks, private inclusion wins over plain. A directory named in `private_directory_names` and its descendants go to private unless that directory is **exactly** listed in plain and is not covered by private. Listing only a parent does not disable automatic encryption.
+5. After these checks, a private rule wins over an overlapping plain rule at a **different** path. The identical normalized path in two path lists is a configuration error. A directory named in `private_directory_names` and its descendants go to private unless that directory is **exactly** listed in plain and is not covered by private. Listing only a parent does not disable automatic encryption.
 6. An allowed plain inclusion goes to `plain`; a path with no applicable inclusion is skipped.
 
 An excluded directory cannot be reopened by including a descendant. Plain cannot override an explicit private directory inclusion; its exception applies only to automatic name-based privacy and requires the directory's exact path. The order of lines does not change these rules.
 
-With `private_directory_names = [".git"]`, a `.git` directory beneath a selected source is encrypted even when `.git` is also explicit-only. Listing `/Users/example/Desktop/project/.git` directly in `plain-paths.txt` instead makes that directory and its otherwise allowed contents plain. If the same path is also in `private-paths.txt`, private wins. A `.env` inside it still needs its own exact inclusion. The automatic rule concerns **directories** named `.git`, not ordinary files of that name. Absolute exclusions still win. Changing `.git` from private to plain archives the old copy under `private/history` and uploads the new copy under `plain/current`; use `forget --area private` to remove the old encrypted copy as well.
+The validator also checks rules that would conceal one another. It rejects the same normalized absolute path repeated within one list or across the three path lists, with both file and line numbers. Different parent and child paths are allowed: a plain project can contain a private `.git/` and an excluded `build/`. If an excluded **ancestor** covers a directly included source, `check` warns with both lines and suspends that source; its absence does not block `run`. Removing the ancestor exclusion makes the source mandatory again. An identical include and exclude path is an error, not a suspended source.
+
+Name rules are compared without regard to case, while absolute paths keep their exact spelling. Duplicate TOML names, a directory explicit-only pattern matching a `private_directory_names` value, and a file explicit-only pattern matching an `ignored_file_names` value are configuration errors. This includes wildcard matches such as `.g*/` against `.git` and `.D*` against `.DS_Store`. The latter combination is rejected because the ignored-name check would bypass explicit-only's hard-link alias protection. A file-only `.git` pattern and a private directory name `.git` are compatible: they apply to different object types. Among explicit-only patterns of the same type, full containment is an error (`node*/` makes `node_modules/` redundant), while demonstrable partial overlap is a warning (`node*/` and `*modules/`). These checks run when the policy is loaded, before cloud access.
+
+`.gitignore` intersections are checked during the local scan. An effective ignore rule normally skips a path without a warning. If an exact inclusion overrides it, `check` reports the included path, its path-list line, and the `.gitignore` source and line. Automatic private-directory routing that overrides an ignore rule produces at most one warning per directory. Both are intentional exceptions: warnings do not block `run`, and an exact directory exception does not extend to its descendants.
+
+**Scope of an inclusion versus scope of an exception.** Listing a directory selects its subtree, but it does not turn every descendant into an *exact* inclusion. Each child is classified against the rules again. Listing one exact file or directory grants an exception only at that path; it does not grant exact exceptions to its children or to another path with the same name.
+
+| Rule | What happens under a selected directory | What an exact entry changes |
+|---|---|---|
+| `ignored_file_names` | Matching non-directory entries are skipped at any depth. | Listing one matching file or symlink directly in plain or private includes that entry; other matches stay skipped. |
+| `explicit-only-patterns.txt` | A matching file is skipped; a matching directory is pruned with its descendants. | Listing the protected path directly allows that entry. If it is a directory, traversal resumes, but protected descendants still require their own exact entries. |
+| `.gitignore` with `use_gitignore = true` | Git's effective ignore rules are checked for each inherited path; an ignored directory is pruned. | Listing one path directly overrides Git ignore for that path. Listing an ignored directory does not override ignore rules for all its descendants. |
+| `private_directory_names` | A matching directory and its otherwise eligible descendants go to private. | Listing that directory itself in plain overrides automatic encryption for its subtree, unless an explicit private inclusion also covers it. Other child-level rules still apply. |
+| `exclude-paths.txt` | An excluded directory and its entire subtree are skipped. | No exact inclusion can reopen an excluded path or child. |
+
+For example, with `project/` selected, an ignored `project/build/` is skipped. Listing `project/build/` directly allows the directory to be visited, but files under it can still be ignored; list a specific file directly if it too needs an exception. Likewise, listing a protected `project/node_modules/` allows traversal but does not authorize a protected `.env` inside it. Use `explain ABS_PATH` to inspect one classification and `preview --local` to inspect the selected set before a run.
+
+With `private_directory_names = [".git"]`, a `.git` directory beneath a selected source is encrypted. A file named `.git` can separately be explicit-only; the directory pattern `.git/` would be redundant and is rejected. Listing `/Users/example/Desktop/project/.git/` directly in `plain-paths.txt` instead makes that directory and its otherwise allowed contents plain. Do not list that identical path in private too: it is an error. An explicit private **ancestor** still wins over the plain child. A `.env` inside it still needs its own exact inclusion. Absolute exclusions still win. Changing `.git` from private to plain archives the old copy under `private/history` and uploads the new copy under `plain/current`; use `forget --area private` to remove the old encrypted copy as well.
 
 A path covers itself and descendants, not similar names: `/a/karabiner/` does not cover `/a/karabiner-old/`.
 
-`ignored_file_names` entries are literal case-insensitive basenames, without paths or wildcards. TOML spaces matter: `" ← "` matches a filename with spaces on both sides of the arrow. An exact file inclusion overrides this policy only for that file; private wins if it is in both lists, and exclude always wins. A newly ignored current copy is archived in the same area's history on the next `run`. Local files are not deleted. Use `forget` to remove all cloud versions intentionally.
+`ignored_file_names` entries are literal case-insensitive basenames, without paths or wildcards. TOML spaces matter: `" ← "` matches a filename with spaces on both sides of the arrow. An exact file inclusion overrides this policy only for that file; an identical plain/private path is rejected, and an absolute exclude always wins. Do not repeat a sensitive name in both `ignored_file_names` and a file-only explicit-only pattern: it is a configuration error because the former can bypass the latter's hard-link alias protection. A newly ignored current copy is archived in the same area's history on the next `run`. Local files are not deleted. Use `forget` to remove all cloud versions intentionally.
 
 `use_gitignore = true` asks Git to read `.gitignore` files along included physical paths, even outside Git repositories. Git patterns and negation work. The index, `.git/info/exclude`, and global exclusion files are not consulted. The search starts at filesystem root, so an ancestor `.gitignore` can apply. Symlinks are not traversed. A `.gitignore` file itself remains eligible unless a rule excludes it. Git must be in `PATH`; a failed check stops selection. `init` sets this option to `false`.
 
-Before enabling `.gitignore` processing, compare `preview --local` with the previous selection. Ignored descendants are omitted even if their parent is in a path list; an exact file entry remains included. An exact directory entry does not override rules for every descendant. Automatically private `.git` directories remain included. New `.gitignore` rules archive previously selected current copies in their original area on the next `run`; they do not delete history.
+Before enabling `.gitignore` processing, compare `preview --local` with the previous selection. Ignored descendants are omitted even if their parent is in a path list; an exact file entry remains included. An exact directory entry does not override rules for every descendant. Automatically private `.git` directories remain included. `check`, including `check --remote`, warns when an exact inclusion overrides an effective Git ignore rule, naming both sources; automatic private-directory routing produces at most one warning per directory. Ordinary ignored files are not warnings. These overlaps do not block `run`. New `.gitignore` rules archive previously selected current copies in their original area on the next `run`; they do not delete history.
 
 ### 3.2.1 Explicit-only names
 
@@ -112,13 +131,15 @@ Before enabling `.gitignore` processing, compare `preview --local` with the prev
 ```text
 .env
 .env.*
+.env/
+.env.*/
 ```
 
-These are names, not absolute paths. `.env` matches that basename anywhere; `.env.*` includes `.env.local`, `.env.production`, and `.env.example`. Include an innocuous example file exactly if wanted; do not assume it contains no secrets. Names such as `node_modules`, `.venv`, `venv`, and `myenv` can be added to protect those directories everywhere.
+These are basenames, not absolute paths. `.env` matches a file or symlink with that name anywhere; `.env.*` includes files such as `.env.local`, `.env.production`, and `.env.example`. The `/` variants protect directories with the same names and keep their descendants out unless the directory is included exactly. Include an innocuous example file exactly if wanted; do not assume it contains no secrets. Names such as `node_modules/`, `.venv/`, `venv/`, and `myenv/` can protect directories everywhere.
 
-Syntax permits names and `*` within the final basename. It does not permit `/`, `**`, regular expressions, or signed `+`/`-` rules. Blank and comment lines work as in the other lists. These name checks are case-insensitive, so `.ENV` also needs exact inclusion; other path semantics do not become globally case-insensitive.
+Syntax permits literal names and `*` within a basename. A final `/` marks a directory pattern; its absence marks a file or symlink pattern. Internal `/`, `**`, regular expressions, and signed `+`/`-` rules are not supported. Blank and comment lines work as in the other lists. Name policies are case-insensitive, so `.ENV` also needs exact inclusion. Absolute path lists are case-sensitive and are matched by their exact spelling. Duplicate names differing only by case, duplicate normalized paths, and identical paths in different lists are errors. Within explicit-only patterns of the same type, a provably redundant pattern is an error; a provable partial overlap is a warning.
 
-The rule covers files, directories, and symlinks with matching names. Exactly including a protected directory allows traversal, but descendants still follow their own rules: `.env` remains protected. Selecting a symlink saves the link, not the contents at its target.
+Each pattern covers only its declared type. Exactly including a protected directory allows traversal, but descendants still follow their own rules: `.env` remains protected. Selecting a symlink saves the link, not the contents at its target.
 
 With `/Users/example/Desktop/project/` in plain:
 
@@ -128,7 +149,7 @@ With `/Users/example/Desktop/project/` in plain:
 | Exact path in plain | Saved as plain, with an explicit protected-name warning |
 | Exact path in private | Saved encrypted and absent from plain |
 | Project directory in private, without the exact file path | Skipped: private inclusion is still inherited |
-| Exact path in both lists | Saved encrypted: private wins |
+| Exact path in both lists | Configuration error; remove the duplicate entry |
 | File or ancestor path in exclude | Skipped in every case |
 
 An exact entry for `project/.env` does not authorize `project/subdir/.env`, `another-project/.env`, or `project/.env.local`. A new `.env` appearing during a run must not slip through a recursive directory rule. Removing an exact entry or adding a new protected pattern archives an existing current copy on the next `run`; old history remains until `forget`. `preview --local` shows protected names. `preview --target` and `status` distinguish policy archives from local deletions and record the **current** rule causing exclusion; they cannot reconstruct the historical rule that first included a file.
@@ -163,15 +184,17 @@ Replace `/Users/example` with your own absolute home path and decide deliberatel
 # explicit-only-patterns.txt
 .env
 .env.*
-node_modules
-.venv
-venv
-myenv
+.env/
+.env.*/
+node_modules/
+.venv/
+venv/
+myenv/
 .git
-.astro
+.astro/
 ```
 
-These **eight patterns are examples**; `init` creates only `.env` and `.env.*`. The `dist/` and `.vercel/output/` exclusions are absolute and limited to one project. For a global basename policy use `explicit-only-patterns.txt`. With `private_directory_names = [".git"]`, selected `.git` directories are automatically encrypted despite explicit-only; see §3.2. Inspect the five local configuration files, or use `check`, `explain ABS_PATH`, and `preview --local`, to learn the actual selection.
+These **ten patterns are examples**; `init` creates only the four `.env` file and directory patterns. The `dist/` and `.vercel/output/` exclusions are absolute and limited to one project. For a global basename policy use `explicit-only-patterns.txt`. Here `.git` protects files named `.git`; directories with that name are encrypted by `private_directory_names`. Inspect the five local configuration files, or use `check`, `explain ABS_PATH`, and `preview --local`, to learn the actual selection.
 
 ### 3.4 Credentials and symlinks
 
@@ -263,7 +286,7 @@ These are macbackup subcommands, not rclone commands. Restoring an entire tree a
 | `check` | Check local sources; `--remote --target` also reads remotes and inventories |
 | `explain PATH` | Explain the local classification of one path |
 | `layout [PATH]` | Summarize private subtrees within a plain directory; default to the current directory |
-| `preview --local` / `preview --target` | Show local selection or simulate remote operations without changes |
+| `preview --local` / `preview --target` | Show local selection or plan remote archives without changes; `--simulate` also performs transfer checks |
 | `run --target` | Transfer selected files, keep prior versions, and show progress |
 | `mount --target` | Mount plain, private, or both read-only on macOS |
 | `status` | Read the local report for the last run, including an interrupted run |
@@ -303,13 +326,16 @@ Remote `check` reads only. It neither compares file contents nor proves recovera
 macbackup preview --local
 macbackup preview --local --json
 macbackup preview --target google
+macbackup preview --target google --simulate
 macbackup explain "/Users/example/Desktop/project/.env" --json
 macbackup layout "/Users/example/Desktop/project"
 ```
 
 Local preview shows paths, classifications, exclusion reasons, and warnings. Exact plain inclusions of protected names are highlighted. An explicit-only rejection identifies its pattern in JSON and individual explanations. The local mode does not contact the cloud or estimate remaining upload bytes. If scanning fails, partial entries are not presented as a valid plan. A pruned directory is shown without visiting every descendant, so its skipped count is not a full subtree count.
 
-Remote `preview --target google` performs a dry run. For each target and area it reports selected files, archives due to local deletions, and archives due to policy changes. A policy archive includes the path, new classification, reason, and current rule when available. It reads local contents needed for comparison but does not change the cloud. It need not list every future replacement of a modified file. Exceeding `max_delete` is reported in the preview; `run` would stop before transfer for the same plan. Neither preview mode writes a run report or freezes source and remote state for a later run.
+Remote `preview --target google` reads the current cloud inventories and builds the archive plan without comparing file contents or simulating transfers. For each target and area it reports selected files, archives due to local deletions, and archives due to policy changes. A policy archive includes the path, new classification, reason, and current rule when available. Exceeding `max_delete` is reported in the preview; `run` would stop before transfer for the same plan. This fast plan cannot tell which selected files would need uploading or detect errors that arise only during content comparison or transfer. Neither preview mode writes a run report or freezes source and remote state for a later run.
+
+Add `--simulate` to retain the deeper, slower preview: after building the same plan, macbackup uses `rclone cryptcheck` to compare selected private files already in `private/current` and runs rclone dry-run sync where changes are needed. The private comparison bar shows completed files against its total; the dry-run bar shows elapsed time rather than a file percentage. The plain dry run can also take time. This is not `macbackup verify`. Both preview modes are read-only; interrupting either with `Ctrl-C` does not modify the cloud. The active simulation phase is printed to stderr even without an interactive terminal. `--simulate` requires `--target`.
 
 `explain ABS_PATH` classifies one path without scanning every source. Its explanation does not prove that the file has already been saved or encrypted. `layout [PATH]` scans the selected plain directory (or current directory) and summarizes roots, counts, and sizes of private subtrees within it. `--json` adds logical paths in `private/current`. It does not contact the cloud, list history or old plain copies, or read file contents. An invalid or failed scan does not yield a valid partial layout.
 
