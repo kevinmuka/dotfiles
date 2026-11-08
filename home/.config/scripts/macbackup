@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.0"
+VERSION = "0.14.1"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -1226,7 +1226,7 @@ def restore_icon(file: Path, folder: Path, replace: bool) -> dict:
     return {'ok': True, 'folder': str(folder), 'note': 'Icona ripristinata; nessun accesso cloud.'}
 
 
-def scan_policy(policy: Policy) -> Scan:
+def scan_policy(policy: Policy, pulse: 'MountPulse | None' = None) -> Scan:
     result = Scan([], [], list(policy.warnings))
     seen: set[Path] = set()
 
@@ -1234,6 +1234,8 @@ def scan_policy(policy: Policy) -> Scan:
         if path in seen:
             return
         seen.add(path)
+        if pulse is not None:
+            pulse.completed += 1
         # Absolute exclusions are authoritative, even for missing included roots.
         preliminary = policy.decide(path, directory=True, check_gitignore=False)
         if preliminary.action == "skip" and preliminary.rule:
@@ -1343,12 +1345,12 @@ def scan_policy(policy: Policy) -> Scan:
     return result
 
 
-def split_layout(policy: Policy, root: Path) -> dict:
+def split_layout(policy: Policy, root: Path, pulse: MountPulse | None = None) -> dict:
     if not root.is_dir() or root.is_symlink():
         raise ConfigError('layout richiede una directory locale reale.')
     if policy.decide(root, directory=True).action != 'plain':
         raise ConfigError('layout richiede una directory selezionata in plain.')
-    scan = scan_policy(policy)
+    scan = scan_policy(policy, pulse)
     if scan.errors:
         return {'scope': 'local-only', 'ok': False, 'path': str(root),
                 'errors': scan.errors, 'warnings': scan.warnings, 'private_subtrees': []}
@@ -1827,8 +1829,12 @@ def terminal_style(value: str, code: str, stream) -> str:
 
 def ui(value: str, kind: str = 'info', stream=None) -> str:
     """Style only human-readable labels; structured output remains plain JSON."""
+    # The shared WezTerm palette maps ANSI blue (34) to gray in both themes.
+    remote_color = ('1;38;2;37;86;152' if os.environ.get('ZSH_THEME_MODE') == 'light'
+                    else '1;38;2;139;181;236')
     colors = {'info': '1;36', 'success': '1;32', 'warning': '1;33',
-              'error': '1;31', 'private': '1;35', 'muted': '2', 'subtle': '2;90'}
+              'error': '1;31', 'private': '1;35', 'muted': '2',
+              'subtle': '2;90', 'remote': remote_color}
     return terminal_style(value, colors[kind], stream if stream is not None else sys.stdout)
 
 
@@ -1840,17 +1846,38 @@ def issue_line(label: str, message: str, kind: str) -> str:
     return (ui(label, kind) + ' ' + message).replace('\r', '\\r')
 
 
+def print_selection_summary(counts: dict) -> None:
+    """Use the same local selection summary for both check modes."""
+    print()
+    print(f"{ui('Normali:', 'info')} {counts['plain']}; "
+          f"{ui('privati:', 'private')} {counts['private']}; "
+          f"{ui('saltati:', 'warning')} {counts['skipped']}; "
+          f"{ui('dimensione selezionata:', 'info')} "
+          f"{progress_quantity(counts['selected_bytes'], False)}.")
+    if counts['finder_icons']:
+        print(f"Icone Finder da conservare separatamente: {counts['finder_icons']}; "
+              "i byte dei resource fork non sono inclusi nella stima.")
+
+
 class MountPulse:
     """An activity bar, or a file-count bar when the caller knows the total."""
 
-    def __init__(self, label: str, total: int | None = None):
+    def __init__(self, label: str, total: int | None = None, show_count: bool | str = False):
         self.label = label
         self.started = time.monotonic()
         self.interactive = sys.stderr.isatty()
         self.total = total
+        self.show_count = show_count
         self.completed = 0
+        self.matches = None
+        self.count_verb = None
+        self.byte_fd = None
+        self.byte_total = None
         self.report_path = None
         self.report_offset = 0
+        self.report_expected = None
+        self.report_seen = set()
+        self.report_pending = b''
         if not self.interactive:
             print(f'{label}: in corso...', file=sys.stderr, flush=True)
 
@@ -1864,10 +1891,24 @@ class MountPulse:
                     stream.seek(self.report_offset)
                     new_data = stream.read()
                     self.report_offset = stream.tell()
-                self.completed += new_data.count(b'\n')
+                if self.report_expected is None:
+                    self.completed += new_data.count(b'\n')
+                else:
+                    lines = (self.report_pending + new_data).split(b'\n')
+                    self.report_pending = lines.pop()
+                    for line in lines:
+                        if len(line) >= 3 and line[1:2] == b' ':
+                            name = line[2:].decode('utf-8', errors='replace')
+                            if name in self.report_expected:
+                                self.report_seen.add(name)
+                    self.completed = len(self.report_seen)
             except FileNotFoundError:
                 pass
-        if self.total is None:
+        if self.byte_fd is not None and self.byte_total is not None:
+            received = os.fstat(self.byte_fd).st_size
+            filled = width * min(received, self.byte_total) // max(self.byte_total, 1)
+            bar = '#' * filled + '.' * (width - filled)
+        elif self.total is None:
             offset = int((time.monotonic() - self.started) * 5) % (width + block)
             bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
                           for index in range(width))
@@ -1878,8 +1919,29 @@ class MountPulse:
         detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
                   if metadata_bytes is not None else '')
         if self.total is not None:
-            count = f'{"Checked" if macbackup_language() == "en" else "Verificati"} {self.completed}/{self.total}'
+            verb = {'removed': ('Removed', 'Rimossi'),
+                    'archived': ('Archived', 'Archiviati')}.get(
+                        self.count_verb, ('Checked', 'Verificati'))
+            count = f'{verb[0 if macbackup_language() == "en" else 1]} {self.completed}/{self.total}'
             detail += '  ' + terminal_style(count, '2;90', sys.stderr)
+        elif self.show_count:
+            if self.show_count == 'entries':
+                count = (f'Entries read {self.completed}' if macbackup_language() == 'en'
+                         else f'Voci lette {self.completed}')
+            else:
+                count = (f'Paths checked {self.completed}' if macbackup_language() == 'en'
+                         else f'Percorsi controllati {self.completed}')
+            detail += '  ' + terminal_style(count, '2;90', sys.stderr)
+        if self.matches is not None:
+            matches = (f'Matches {self.matches}' if macbackup_language() == 'en'
+                       else f'Corrispondenze {self.matches}')
+            detail += '  ' + terminal_style(matches, '2;90', sys.stderr)
+        if self.byte_fd is not None and self.byte_total is not None:
+            received = os.fstat(self.byte_fd).st_size
+            label = 'Received' if macbackup_language() == 'en' else 'Ricevuti'
+            detail += ('  ' + terminal_style(label, '2;90', sys.stderr) + ' '
+                       + progress_quantity(received, False) + ' / '
+                       + progress_quantity(self.byte_total, False))
         title = terminal_style(self.label, '1;36', sys.stderr)
         progress = terminal_style(f'[{bar}]', '34', sys.stderr)
         sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}'))
@@ -1908,13 +1970,13 @@ def mount_input_wait(input_fd: int | None, timeout: float) -> None:
 
 @contextmanager
 def operation_activity(label: str, total: int | None = None,
-                       report_non_tty: bool = False):
+                       report_non_tty: bool = False, show_count: bool = False):
     """Show a TTY progress bar and discard input during a long phase."""
     if not sys.stderr.isatty():
         if not report_non_tty:
             yield None
             return
-        pulse = MountPulse(label, total)
+        pulse = MountPulse(label, total, show_count)
         outcome = 'completato'
         try:
             yield pulse
@@ -1928,7 +1990,7 @@ def operation_activity(label: str, total: int | None = None,
             pulse.done(getattr(pulse, 'outcome', outcome))
         return
     with discard_mount_input() as input_fd:
-        pulse = MountPulse(label, total)
+        pulse = MountPulse(label, total, show_count)
         stopped = threading.Event()
 
         def animate() -> None:
@@ -1956,26 +2018,81 @@ def operation_activity(label: str, total: int | None = None,
             pulse.done(getattr(pulse, 'outcome', outcome))
 
 
-def mount_inventory(root: str, label: str, input_fd: int | None = None) -> list[dict]:
+class JsonArrayObjectCounter:
+    """Count complete top-level objects in a streamed JSON array."""
+
+    def __init__(self):
+        self.count = 0
+        self.array_depth = 0
+        self.object_depth = 0
+        self.in_string = False
+        self.escaped = False
+
+    def feed(self, chunk: bytes) -> None:
+        for byte in chunk:
+            if self.in_string:
+                if self.escaped:
+                    self.escaped = False
+                elif byte == 92:  # backslash
+                    self.escaped = True
+                elif byte == 34:  # quote
+                    self.in_string = False
+                continue
+            if byte == 34:
+                self.in_string = True
+            elif byte == 91:
+                self.array_depth += 1
+            elif byte == 93:
+                self.array_depth -= 1
+            elif byte == 123:
+                self.object_depth += 1
+            elif byte == 125:
+                self.object_depth -= 1
+                if self.array_depth == 1 and self.object_depth == 0:
+                    self.count += 1
+
+
+def mount_inventory(root: str, label: str, input_fd: int | None = None,
+                    live_count: bool = False, options: tuple[str, ...] = ('--recursive', '--links'),
+                    activity: MountPulse | None = None) -> list[dict]:
     executable = shutil.which('rclone')
     if executable is None:
         raise ConfigError('rclone non è disponibile nel PATH.')
-    pulse = MountPulse(f'Inventario {label}')
+    own_pulse = activity is None
+    pulse = activity or MountPulse(f'Inventario {label}', show_count='entries' if live_count else False)
+    starting_count = pulse.completed
+    if activity is not None:
+        pulse.label = f'Inventario {label}'
+        pulse.total = None
+        pulse.show_count = 'entries'
+    counter = JsonArrayObjectCounter() if live_count or activity is not None else None
+    offset = 0
     with tempfile.TemporaryFile(mode='w+t', encoding='utf-8') as output, \
             tempfile.TemporaryFile(mode='w+t', encoding='utf-8') as errors:
         try:
             process = subprocess.Popen(
-                [executable, '--ask-password=false', 'lsjson', root,
-                 '--recursive', '--links'],
+                [executable, '--ask-password=false', 'lsjson', root, *options],
                 stdout=output, stderr=errors, env=transport_env(),
                 start_new_session=True)
         except OSError as exc:
-            pulse.done('errore')
+            if own_pulse:
+                pulse.done('errore')
             raise TransportError(f'Impossibile avviare rclone: {exc}') from exc
         try:
             while process.poll() is None:
-                pulse.draw(os.fstat(output.fileno()).st_size)
-                mount_input_wait(input_fd, 0.2)
+                size = os.fstat(output.fileno()).st_size
+                if counter is not None and size > offset:
+                    counter.feed(os.pread(output.fileno(), size - offset, offset))
+                    offset = size
+                    pulse.completed = starting_count + counter.count
+                if own_pulse:
+                    pulse.draw(size)
+                    mount_input_wait(input_fd, 0.2)
+                else:
+                    try:
+                        process.wait(timeout=0.2)
+                    except subprocess.TimeoutExpired:
+                        pass
             code = process.wait()
         except KeyboardInterrupt as exc:
             process.terminate()
@@ -1984,27 +2101,38 @@ def mount_inventory(root: str, label: str, input_fd: int | None = None) -> list[
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
-            pulse.done('interrotto')
+            if own_pulse:
+                pulse.done('interrotto')
+            if live_count or not own_pulse:
+                raise
             raise ConfigError('Montaggio interrotto dall’utente.') from exc
         output.seek(0)
         errors.seek(0)
         raw, detail = output.read(), errors.read()
-        if code == 3 and (not raw.strip() or raw.strip() == '[]') \
-                and 'directory not found' in detail.lower():
+        try:
+            empty = raw.strip() in ('', '[', '[]') or json.loads(raw) == []
+        except ValueError:
+            empty = False
+        if code == 3 and empty and 'directory not found' in detail.lower():
             raw = '[]'
         elif code != 0:
-            pulse.done('errore')
+            if own_pulse:
+                pulse.done('errore')
             raise TransportError(f'Inventario {label}: rclone è terminato con codice {code}: '
                                  + detail.strip()[-1200:])
     try:
         items = json.loads(raw)
     except ValueError as exc:
-        pulse.done('errore')
+        if own_pulse:
+            pulse.done('errore')
         raise TransportError(f'Inventario {label}: risposta JSON non valida.') from exc
     if not isinstance(items, list):
-        pulse.done('errore')
+        if own_pulse:
+            pulse.done('errore')
         raise TransportError(f'Inventario {label}: formato inatteso.')
-    pulse.done(f'{len(items)} voci lette')
+    pulse.completed = starting_count + len(items)
+    if own_pulse:
+        pulse.done(f'{len(items)} voci lette')
     return items
 
 
@@ -2015,7 +2143,8 @@ def mount_current_conflicts(roots: dict[str, str], target: str = '',
     for area in ('plain', 'private'):
         objects = {}
         for item in mount_inventory(remote_join(roots[area], 'current'),
-                                    f'{target}/{area}' if target else area, input_fd):
+                                    f'{target}/{area}' if target else area, input_fd,
+                                    live_count=True):
             path = item.get('Path')
             if (not isinstance(path, str) or not path or path.startswith('/')
                     or any(part in ('', '.', '..') for part in path.split('/'))):
@@ -2219,11 +2348,13 @@ def _mount_operation(args, config: Path, home: Path, input_fd: int | None) -> in
     return 0
 
 
-def remote_current_objects(root: str) -> dict[str, bool]:
+def remote_current_objects(root: str, inventory_label: str | None = None) -> dict[str, bool]:
     """Read current once, keeping directories for cross-area collision checks."""
-    text = rclone_call("lsjson", root, "--recursive", "--links", missing_ok=True)
+    items = (mount_inventory(root, inventory_label, live_count=True)
+             if inventory_label is not None else
+             json.loads(rclone_call("lsjson", root, "--recursive", "--links", missing_ok=True)))
     objects = {}
-    for item in json.loads(text):
+    for item in items:
         path = item.get("Path")
         if not isinstance(path, str) or not path or path.startswith("/") or any(part in ("", ".", "..") for part in path.split("/")):
             raise TransportError("Il cloud ha restituito un percorso non valido; operazione bloccata.")
@@ -2265,7 +2396,8 @@ def selected_names(scan: Scan, area: str) -> set[str]:
 
 
 def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
-                  enforce_limit: bool = True, check_conflicts: bool = False) -> list[dict]:
+                  enforce_limit: bool = True, check_conflicts: bool = False,
+                  show_inventory: bool = False) -> list[dict]:
     if scan.errors:
         raise ConfigError("La selezione locale contiene errori. Eseguire macbackup check.")
     plans = []
@@ -2276,7 +2408,9 @@ def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
             local = selected_names(scan, area)
             managed = set()
             policy_archives = []
-            objects = remote_current_objects(remote_join(root, "current"))
+            objects = remote_current_objects(
+                remote_join(root, "current"),
+                f'{target}/{area}/current' if show_inventory else None)
             current_objects[area] = objects
             existing = sorted(path for path, is_dir in objects.items() if not is_dir)
             any_existing = any_existing or bool(existing)
@@ -2313,8 +2447,10 @@ def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
             icon_local = {str(Path(entry.path).parent).lstrip('/') + ICON_SIDECAR for entry in icons}
             icon_root = remote_join(root, 'macos-icons')
             icon_existing = sorted(path for path, is_dir in
-                                   remote_current_objects(remote_join(icon_root, 'current')).items()
-                                   if not is_dir)
+                                   remote_current_objects(
+                                       remote_join(icon_root, 'current'),
+                                       f'{target}/{area}/macos-icons/current' if show_inventory else None
+                                   ).items() if not is_dir)
             any_existing = any_existing or bool(icon_existing)
             icon_managed = set()
             icon_policy_archives = []
@@ -2448,7 +2584,13 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
         if dry_run:
             arguments.append("--dry-run")
             label = f'Anteprima {plan["target"]}/{plan["area"]}/{plan.get("kind", "files")}'
-            with operation_activity(label, report_non_tty=True):
+            report = Path(directory) / 'combined.txt'
+            report.touch(mode=0o600)
+            arguments.extend(('--combined', str(report)))
+            with operation_activity(label, len(names), report_non_tty=True) as pulse:
+                if pulse is not None:
+                    pulse.report_path = report
+                    pulse.report_expected = set(names)
                 rclone_call(*arguments)
             return None
         arguments.extend(("--stats", "5s", "--stats-file-name-length", "0",
@@ -2457,13 +2599,16 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
                                    f"{plan['target']}/{plan['area']}/{plan.get('kind', 'files')}")
 
 
-def archive_policy_copies(plan: dict, run_id: str, completed: list[dict]) -> None:
+def archive_policy_copies(plan: dict, run_id: str, completed: list[dict],
+                          activity: MountPulse | None = None) -> None:
     """Move policy-revoked current copies into the same area's run history."""
     for item in plan['policy_archives']:
         destination = remote_join(plan['root'], 'history/' + run_id + '/' + item['relative'])
         rclone_call('moveto', item['remote_path'], destination, '--retries', '1')
         completed.append({key: value for key, value in item.items() if key != 'relative'} |
                          {'history_path': destination})
+        if activity is not None:
+            activity.completed += 1
 
 
 def transport_operation(args, policy: Policy) -> int:
@@ -2471,21 +2616,29 @@ def transport_operation(args, policy: Policy) -> int:
         raise ConfigError('--progress-depth deve essere un intero fra 1 e 5.')
     targets, limit = load_targets(policy.config_dir, args.target)
     with operation_lock(policy.state_dir):
-        with operation_activity('Preparazione ' + args.command):
-            scan = scan_policy(policy)
+        if args.command == 'check':
+            with operation_activity('Scansione locale', show_count=True) as pulse:
+                scan = scan_policy(policy, pulse)
+            plans = transfer_plan(policy, scan, targets, limit,
+                                  enforce_limit=False, check_conflicts=True,
+                                  show_inventory=True)
+        else:
+            with operation_activity('Scansione locale', show_count=True) as pulse:
+                scan = scan_policy(policy, pulse)
             plans = transfer_plan(policy, scan, targets, limit,
                                   enforce_limit=args.command == 'run',
-                                  check_conflicts=args.command == 'check')
+                                  show_inventory=True)
         if args.command == "check":
             result = {"scope": "remote-read-only", "ok": True,
                       "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.",
-                      "warnings": scan.warnings}
+                      "summary": scan.summary(), "warnings": scan.warnings}
             if getattr(args, "json", False):
                 print(json.dumps(result, ensure_ascii=False))
             else:
                 print(ui('Controllo remoto completato.', 'success') + ' ' + result['note'])
                 for warning in scan.warnings:
-                    print(ui('AVVISO:', 'warning') + ' ' + warning)
+                    print(issue_line('AVVISO:', warning, 'warning'))
+                print_selection_summary(result['summary'])
             return 0
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
         results = []
@@ -2512,7 +2665,13 @@ def transport_operation(args, policy: Policy) -> int:
                                      getattr(args, 'progress_depth', 2))
                 if args.command == 'run':
                     result.update(transfer_metrics(stats, True))
-                    archive_policy_copies(plan, run_id, result['policy_archived'])
+                    if plan['policy_archives']:
+                        with operation_activity(
+                                f'Archiviazione policy {plan["target"]}/{plan["area"]}',
+                                len(plan['policy_archives'])) as activity:
+                            if activity is not None:
+                                activity.count_verb = 'archived'
+                            archive_policy_copies(plan, run_id, result['policy_archived'], activity)
                 result["ok"] = True
             except TransferInterrupted as exc:
                 result.update(transfer_metrics(exc.stats, False))
@@ -2550,7 +2709,7 @@ def transport_operation(args, policy: Policy) -> int:
             print(ui(data["note"], 'subtle'))
             for result in results:
                 outcome = ui('OK', 'success') if result['ok'] else ui('ERRORE', 'error')
-                print(f"{ui(result['target'] + '/' + result['area'] + '/' + result['kind'], 'subtle')}: {outcome}; "
+                print(f"{ui(result['target'] + '/' + result['area'] + '/' + result['kind'], 'remote')}: {outcome}; "
                       f"selezionati {result['selected']}; da archiviare per cancellazione {result['archive_deleted']}; "
                       f"da archiviare per policy {result['archive_policy']}.")
                 for item in result['policy_archives']:
@@ -2576,7 +2735,8 @@ def transport_operation(args, policy: Policy) -> int:
         return 0 if data["ok"] else 1
 
 
-def forget_inventory(targets: dict, requested: str, subtree: bool, area_filter: str) -> list[dict]:
+def forget_inventory(targets: dict, requested: str, subtree: bool, area_filter: str,
+                     activity: MountPulse | None = None) -> list[dict]:
     """List exact current/history objects, independent of the active selector."""
     wanted = requested.lstrip('/')
     matches = []
@@ -2588,10 +2748,16 @@ def forget_inventory(targets: dict, requested: str, subtree: bool, area_filter: 
                 prefix = root if kind == 'files' else remote_join(root, 'macos-icons')
                 for location in ('current', 'history'):
                     inventory_root = remote_join(prefix, location)
-                    listing = json.loads(rclone_call(
-                        'lsjson', inventory_root, '--recursive', '--files-only',
-                        '--links', '--hash', '--original', missing_ok=True,
-                    ))
+                    if activity is not None:
+                        listing = mount_inventory(
+                            inventory_root, f'{target}/{area}/{kind}/{location}',
+                            options=('--recursive', '--files-only', '--links', '--hash', '--original'),
+                            activity=activity)
+                    else:
+                        listing = json.loads(rclone_call(
+                            'lsjson', inventory_root, '--recursive', '--files-only',
+                            '--links', '--hash', '--original', missing_ok=True,
+                        ))
                     seen = set()
                     for item in listing:
                         relative = item.get('Path')
@@ -2635,6 +2801,8 @@ def forget_inventory(targets: dict, requested: str, subtree: bool, area_filter: 
                             'original_id': item.get('OrigID'),
                             'hashes': hashes,
                         })
+                        if activity is not None:
+                            activity.matches += 1
     matches.sort(key=lambda item: (item['target'], item['area'], item['remote_path']))
     return matches
 
@@ -2735,8 +2903,11 @@ def forget_operation(args, config: Path, home: Path) -> int:
                 check_permanent_google(targets)
             if targets != data.get('roots'):
                 raise ConfigError('Le destinazioni sono cambiate: creare un nuovo piano.')
-            with operation_activity('Verifica piano forget'):
-                current = forget_inventory(targets, data['requested'], data['subtree'], data['area'])
+            with operation_activity('Verifica piano forget', report_non_tty=True,
+                                    show_count='entries') as activity:
+                activity.matches = 0
+                current = forget_inventory(targets, data['requested'], data['subtree'],
+                                           data['area'], activity)
                 cleanup_roots = (forget_cleanup_roots(targets, data['requested'], data['area'])
                                  if data['subtree'] else [])
             if current != data.get('items'):
@@ -2748,13 +2919,15 @@ def forget_operation(args, config: Path, home: Path) -> int:
             completed = []
             error = None
             flag = '--drive-use-trash=false' if data['mode'] == 'permanent' else '--drive-use-trash=true'
-            with operation_activity(f'Rimozione copie 0/{len(current)}') as activity:
+            with operation_activity('Rimozione copie', len(current)) as activity:
+                if activity is not None:
+                    activity.count_verb = 'removed'
                 for item in current:
                     try:
                         rclone_call('deletefile', item['remote_path'], flag, '--retries', '1')
                         completed.append(item['remote_path'])
                         if activity is not None:
-                            activity.label = f'Rimozione copie {len(completed)}/{len(current)}'
+                            activity.completed = len(completed)
                     except (TransportError, KeyboardInterrupt) as exc:
                         error = ("Interrotto dall'utente; alcune copie possono essere già state rimosse."
                                  if isinstance(exc, KeyboardInterrupt) else str(exc))
@@ -2763,8 +2936,11 @@ def forget_operation(args, config: Path, home: Path) -> int:
                                                 else 'errore')
                         break
             try:
-                with operation_activity('Controllo copie residue'):
-                    remaining = forget_inventory(targets, data['requested'], data['subtree'], data['area'])
+                with operation_activity('Controllo copie residue', report_non_tty=True,
+                                        show_count='entries') as activity:
+                    activity.matches = 0
+                    remaining = forget_inventory(targets, data['requested'], data['subtree'],
+                                                 data['area'], activity)
             except (ConfigError, TransportError) as exc:
                 remaining = None
                 error = str(exc) if error is None else error + '; verifica finale: ' + str(exc)
@@ -2812,8 +2988,10 @@ def forget_operation(args, config: Path, home: Path) -> int:
         targets, _ = load_targets(config, args.target, require_enabled=False)
         if args.mode == 'permanent':
             check_permanent_google(targets)
-        with operation_activity('Ricerca copie per forget'):
-            items = forget_inventory(targets, str(requested), subtree, args.area)
+        with operation_activity('Ricerca copie per forget', report_non_tty=True,
+                                show_count='entries') as activity:
+            activity.matches = 0
+            items = forget_inventory(targets, str(requested), subtree, args.area, activity)
             cleanup_roots = forget_cleanup_roots(targets, str(requested), args.area) if subtree else []
         if len(items) > 10000:
             raise ConfigError('Oltre 10000 file: restringere il percorso e creare più piani.')
@@ -2856,12 +3034,12 @@ def forget_operation(args, config: Path, home: Path) -> int:
             print(f"{ui('Corrispondenze:', 'info')} {len(items)} file, "
                   f"{progress_quantity(result['known_bytes'], False)} noti.")
             for item in items:
-                print(f"{ui(item['target'] + '/' + item['area'] + '/' + item['location'], 'subtle')}: "
-                      f"{ui(item['remote_path'], 'subtle')}")
+                print(f"{ui(item['target'] + '/' + item['area'] + '/' + item['location'], 'remote')}: "
+                      f"{ui(item['remote_path'], 'remote')}")
             if cleanup_roots:
                 print(f"Directory da ripulire se vuote: {len(cleanup_roots)} radici.")
                 for root in cleanup_roots:
-                    print(f"Directory: {ui(root, 'subtle')}")
+                    print(f"Directory: {ui(root, 'remote')}")
             if result['selected_locally']:
                 print(ui('AVVISO:', 'warning') + ' il percorso è ancora selezionato e potrebbe essere ricaricato dalla prossima run.')
             print(ui(result['note'], 'subtle'))
@@ -2870,7 +3048,8 @@ def forget_operation(args, config: Path, home: Path) -> int:
         return 0
 
 
-def versions_inventory(targets: dict, requested: str, subtree: bool, area_filter: str) -> list[dict]:
+def versions_inventory(targets: dict, requested: str, subtree: bool, area_filter: str,
+                       activity: MountPulse | None = None) -> list[dict]:
     """Read only the requested current subtree and matching subtrees in each history run."""
     wanted = requested.lstrip('/')
     found = []
@@ -2881,8 +3060,11 @@ def versions_inventory(targets: dict, requested: str, subtree: bool, area_filter
             for kind in (('files', 'macos-icons') if subtree else ('files',)):
                 prefix = root if kind == 'files' else remote_join(root, 'macos-icons')
                 history_root = remote_join(prefix, 'history')
-                runs = json.loads(rclone_call('lsjson', history_root, '--dirs-only',
-                                              missing_ok=True))
+                runs = (mount_inventory(history_root, f'{target}/{area}/{kind}/history',
+                                        options=('--dirs-only',), activity=activity)
+                        if activity is not None else
+                        json.loads(rclone_call('lsjson', history_root, '--dirs-only',
+                                               missing_ok=True)))
                 if not isinstance(runs, list):
                     raise TransportError('Elenco delle run storiche non valido.')
                 versions = [None]
@@ -2900,8 +3082,12 @@ def versions_inventory(targets: dict, requested: str, subtree: bool, area_filter
                     options = ['--files-only', '--links']
                     if subtree:
                         options.append('--recursive')
-                    listing = json.loads(rclone_call('lsjson', search_root, *options,
-                                                     missing_ok=True))
+                    listing = (mount_inventory(
+                        search_root, f'{target}/{area}/{kind}/{version or "current"}',
+                        options=tuple(options), activity=activity)
+                        if activity is not None else
+                        json.loads(rclone_call('lsjson', search_root, *options,
+                                               missing_ok=True)))
                     if not isinstance(listing, list):
                         raise TransportError('Inventario delle versioni non valido.')
                     seen = set()
@@ -2935,6 +3121,8 @@ def versions_inventory(targets: dict, requested: str, subtree: bool, area_filter
                             'relative': relative, 'size': size,
                             'modtime': entry.get('ModTime'),
                         })
+                        if activity is not None:
+                            activity.matches += 1
     found.sort(key=lambda item: (item['target'], item['area'], item['remote_path']))
     return found
 
@@ -2948,8 +3136,10 @@ def versions_operation(args, config: Path, home: Path) -> int:
         raise ConfigError('--files si usa soltanto con una directory.')
     targets, _ = load_targets(config, args.target, require_enabled=False)
     with operation_lock(home / '.local/state/macbackup'):
-        with operation_activity('Ricerca versioni'):
-            items = versions_inventory(targets, str(requested), directory, args.area)
+        with operation_activity('Ricerca versioni', report_non_tty=True,
+                                show_count='entries') as activity:
+            activity.matches = 0
+            items = versions_inventory(targets, str(requested), directory, args.area, activity)
     if directory:
         groups = {}
         for item in items:
@@ -2983,7 +3173,7 @@ def versions_operation(args, config: Path, home: Path) -> int:
             print(f"{ui('Versioni della directory', 'info')} {requested}: {len(versions)} gruppi; "
                   f"{len(items)} elementi complessivi.")
             for group in versions:
-                print(f"{ui(group['target'] + '/' + group['area'] + ' ' + group['version'], 'subtle')}: "
+                print(f"{ui('▸ ' + group['target'] + '/' + group['area'] + ' ' + group['version'], 'remote')}: "
                       f"{group['count']} elementi, {progress_quantity(group['bytes'], False)}")
                 if args.files and group['location'] == 'history':
                     for item in group['items']:
@@ -3009,7 +3199,7 @@ def versions_operation(args, config: Path, home: Path) -> int:
     else:
         print(f"{ui('Versioni trovate:', 'info')} {len(items)} per {requested}.")
         for item in data['versions']:
-            print(f"{ui(item['target'] + '/' + item['area'] + ' ' + item['version'], 'subtle')} "
+            print(f"{ui('▸ ' + item['target'] + '/' + item['area'] + ' ' + item['version'], 'remote')} "
                   f"{progress_quantity(item['size'], False)} {item['modtime'] or 'data ignota'}")
         print(ui(data['note'], 'subtle'))
     return 0
@@ -3033,8 +3223,11 @@ def restore_operation(args, config: Path, home: Path) -> int:
         raise ConfigError('Destinazione già presente: scegliere un altro nome o usare --replace.')
     targets, _ = load_targets(config, args.target, require_enabled=False)
     with operation_lock(home / '.local/state/macbackup'):
-        with operation_activity('Ricerca versione da recuperare'):
-            items = [item for item in forget_inventory(targets, str(requested), False, args.area)
+        with operation_activity('Ricerca versione da recuperare', report_non_tty=True,
+                                show_count='entries') as activity:
+            activity.matches = 0
+            items = [item for item in forget_inventory(targets, str(requested), False,
+                                                       args.area, activity)
                      if item['kind'] == 'files' and item['target'] == args.target
                      and item['area'] == args.area and (item['version'] or 'current') == args.version]
         if len(items) != 1:
@@ -3054,7 +3247,10 @@ def restore_operation(args, config: Path, home: Path) -> int:
         try:
             with os.fdopen(fd, 'wb') as output:
                 os.fchmod(output.fileno(), 0o600)
-                with operation_activity('Recupero file'):
+                with operation_activity('Recupero file') as activity:
+                    if activity is not None:
+                        activity.byte_fd = output.fileno()
+                        activity.byte_total = item['size']
                     transfer = subprocess.run(
                         [executable, '--ask-password=false', 'cat', item['remote_path'],
                          '--retries', '1'], stdout=output, stderr=subprocess.PIPE,
@@ -3079,8 +3275,11 @@ def restore_operation(args, config: Path, home: Path) -> int:
                 if any(digesters[name].hexdigest().lower() != value.lower()
                        for name, value in expected.items()):
                     raise TransportError('Hash del download diverso dall’inventario; nessun file ripristinato.')
-            with operation_activity('Verifica copia recuperata'):
-                refreshed = [new for new in forget_inventory(targets, str(requested), False, args.area)
+            with operation_activity('Verifica copia recuperata', report_non_tty=True,
+                                    show_count='entries') as activity:
+                activity.matches = 0
+                refreshed = [new for new in forget_inventory(targets, str(requested), False,
+                                                             args.area, activity)
                              if new['remote_path'] == item['remote_path']]
             if refreshed != [item]:
                 raise TransportError('La versione cloud è cambiata durante il download; nessun file ripristinato.')
@@ -3142,11 +3341,21 @@ def verify_report(source: str, destination: str, names: list[str],
     if not names:
         return {'selected': 0, 'matched': 0, 'different': [], 'missing': [], 'errors': []}
     if size_only:
-        listing = rclone_call('lsjson', destination, '--recursive', '--files-only',
-                             '--links', '--fast-list', '--no-modtime', '--no-mimetype',
-                             missing_ok=True)
+        options = ('--recursive', '--files-only', '--links', '--fast-list',
+                   '--no-modtime', '--no-mimetype')
+        if pulse is not None:
+            original_label = pulse.label
+            listing = mount_inventory(destination,
+                                      original_label.removeprefix('Verifica ') + '/current',
+                                      options=options, activity=pulse)
+            pulse.label = original_label
+            pulse.total = len(names)
+            pulse.completed = 0
+            pulse.show_count = False
+        else:
+            listing = json.loads(rclone_call('lsjson', destination, *options, missing_ok=True))
         remote = {}
-        for item in json.loads(listing):
+        for item in listing:
             name, size = item.get('Path'), item.get('Size')
             if not isinstance(name, str) or not name or name.startswith('/') or any(
                     part in ('', '.', '..') for part in name.split('/')):
@@ -3219,8 +3428,8 @@ def verify_operation(args, config: Path, home: Path) -> int:
     targets, _ = load_targets(config, args.target, require_enabled=False)
     policy = Policy(config, home)
     with operation_lock(policy.state_dir):
-        with operation_activity('Scansione locale'):
-            scan = scan_policy(policy)
+        with operation_activity('Scansione locale', show_count=True) as pulse:
+            scan = scan_policy(policy, pulse)
         if scan.errors:
             raise ConfigError('La selezione locale contiene errori: eseguire macbackup check.')
         results = []
@@ -3439,8 +3648,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if data.get("ok") is False else 0
         policy = Policy(config, home)
         if args.command == 'layout':
-            with operation_activity('Analisi layout'):
-                data = split_layout(policy, absolute_path(args.path) if args.path else Path.cwd())
+            with operation_activity('Analisi layout', show_count=True) as pulse:
+                data = split_layout(policy, absolute_path(args.path) if args.path else Path.cwd(), pulse)
             if args.json:
                 print(json.dumps(data, ensure_ascii=False, indent=2))
             else:
@@ -3498,8 +3707,8 @@ def main(argv: list[str] | None = None) -> int:
                     print("Il percorso non esiste attualmente; questa è solo una classificazione.")
                 print(ui(data["note"], 'subtle'))
             return 1 if decision.action == "error" else 0
-        with operation_activity('Scansione locale'):
-            scan = scan_policy(policy)
+        with operation_activity('Scansione locale', show_count=True) as pulse:
+            scan = scan_policy(policy, pulse)
         if not policy.roots:
             scan.warnings.append("Nessun percorso selezionato: gli elenchi di inclusione sono vuoti.")
         data = {
@@ -3526,16 +3735,7 @@ def main(argv: list[str] | None = None) -> int:
                     tone = 'private' if action.strip() == 'PRIVATE' else 'success' if action.strip() == 'PLAIN' else 'muted'
                     print((f"{ui(action, tone)} {ui(str(entry.path), 'muted')} "
                            f"[{entry.kind}] — {entry.decision.reason}").replace('\r', '\\r'))
-            counts = data["summary"]
-            print()
-            print(f"{ui('Normali:', 'info')} {counts['plain']}; "
-                  f"{ui('privati:', 'private')} {counts['private']}; "
-                  f"{ui('saltati:', 'warning')} {counts['skipped']}; "
-                  f"{ui('dimensione selezionata:', 'info')} "
-                  f"{progress_quantity(counts['selected_bytes'], False)}.")
-            if counts['finder_icons']:
-                print(f"Icone Finder da conservare separatamente: {counts['finder_icons']}; "
-                      "i byte dei resource fork non sono inclusi nella stima.")
+            print_selection_summary(data["summary"])
         return 0 if data["ok"] else 1
     except KeyboardInterrupt:
         if not getattr(args, 'json', False):

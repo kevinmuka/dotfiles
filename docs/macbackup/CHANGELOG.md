@@ -6,6 +6,13 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-07 — consistent operation progress (0.14.1)
+
+- Local scans show visited paths. Cloud `current` inventories show entries read separately in `check --remote`, `preview --target`, and `run`; a live count does not imply a known final total. The same streaming reader is used for size-only verification and searches in `versions`, `forget`, and `restore`, without adding a second inventory pass.
+- Simulated preview counts selected paths reported by rclone. Verification retains completed file checks out of selected files. `forget` and policy archiving show completed removals or moves out of the known plan; restore shows downloaded bytes against the known file size. Merged mount inventories also show live entries read. Structured JSON fields remain unchanged except for the local `summary` added to remote check.
+- Progress stays on stderr, and read-only commands do not write to cloud storage. Synthetic local and crypt remotes cover the revised phases; no live provider verification is claimed.
+- Human-readable remote identifiers use a theme-aware blue distinct from muted file paths; `versions` also marks each remote group with `▸`. JSON and output without color keep their existing structure.
+
 ## 2026-11-07 — fast remote preview (0.14.0)
 
 - `preview --target` now builds the archive plan from the local selection and cloud `current` inventories, without the expensive content comparison or rclone transfer dry run. It still reports policy and local-deletion archives and whether `max_delete` would be exceeded. It cannot predict changed-file uploads or transfer-only failures.

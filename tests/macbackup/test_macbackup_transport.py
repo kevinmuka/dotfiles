@@ -21,6 +21,97 @@ M = runpy.run_path(str(SCRIPT))
 
 
 class VerifyProgressTests(unittest.TestCase):
+    def test_inventory_counter_handles_chunks_nested_values_and_escaped_names(self):
+        counter = M['JsonArrayObjectCounter']()
+        for chunk in (b'[\n{"Path":"a\\\"}b","Meta":{"n":1}},\n{"Path":',
+                      b'"second","Tags":[{"k":"v"}]}\n]'):
+            counter.feed(chunk)
+        self.assertEqual(counter.count, 2)
+
+    def test_inventory_bar_shows_entries_read_without_a_known_total(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+            pulse = M['MountPulse']('Inventory google/plain/current', show_count='entries')
+            pulse.completed = 42
+            pulse.draw()
+        self.assertIn('\x1b[2;90mEntries read 42\x1b[0m', terminal.getvalue())
+
+    def test_restore_and_apply_progress_use_their_own_units(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with tempfile.TemporaryFile() as downloaded:
+            downloaded.write(b'12345')
+            downloaded.flush()
+            with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                    'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                    'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+                restore = M['MountPulse']('Restoring file')
+                restore.byte_fd = downloaded.fileno()
+                restore.byte_total = 10
+                restore.draw()
+                removed = M['MountPulse']('Removing copies', 2)
+                removed.count_verb = 'removed'
+                removed.completed = 1
+                removed.draw()
+                archived = M['MountPulse']('Archiving policy', 3)
+                archived.count_verb = 'archived'
+                archived.completed = 2
+                archived.draw()
+        self.assertIn('\x1b[2;90mReceived\x1b[0m 5 B / 10 B', terminal.getvalue())
+        self.assertIn('Removed 1/2', terminal.getvalue())
+        self.assertIn('Archived 2/3', terminal.getvalue())
+
+    @unittest.skipUnless(shutil.which('rclone'), 'rclone is needed for inventory streaming')
+    def test_inventory_can_update_a_shared_progress_bar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'one.txt').write_text('one')
+            (root / 'two.txt').write_text('two')
+            pulse = M['MountPulse']('Inventory', show_count='entries')
+            pulse.matches = 0
+            items = M['mount_inventory'](str(root), 'synthetic/current',
+                                         activity=pulse)
+            self.assertEqual(len(items), 2)
+            self.assertEqual(pulse.completed, 2)
+            self.assertEqual(pulse.label, 'Inventario synthetic/current')
+
+    def test_remote_check_warning_uses_muted_path_style(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with patch.object(sys, 'stdout', terminal), patch.dict(os.environ, {
+                'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+            line = M['issue_line']('AVVISO:', '/tmp/link: collegamento; destinazione non attraversata.', 'warning')
+        self.assertIn('\x1b[2m/tmp/link\x1b[0m', line)
+        self.assertIn('\x1b[1;33mAVVISO:\x1b[0m', line)
+
+    def test_local_scan_shows_a_running_path_count_without_an_unknown_total(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+            pulse = M['MountPulse']('Local scan', show_count=True)
+            pulse.completed = 3
+            pulse.draw()
+        self.assertIn('\x1b[2;90mPaths checked 3\x1b[0m', terminal.getvalue())
+        self.assertNotIn('Checked 3/3', terminal.getvalue())
+
     def test_report_progress_counts_only_complete_entries_without_double_counting(self):
         class Terminal(io.StringIO):
             def isatty(self):
@@ -47,6 +138,29 @@ class VerifyProgressTests(unittest.TestCase):
             plain = io.StringIO()
             with patch.object(sys, 'stderr', plain):
                 self.assertEqual(M['terminal_style']('Checked 2/2', '2;90', plain), 'Checked 2/2')
+
+    def test_preview_report_counts_only_selected_complete_paths(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'combined.txt'
+            report.write_bytes(b'= first\n- remote-only\n+ second')
+            terminal = Terminal()
+            with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                    'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                    'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+                pulse = M['MountPulse']('Preview synthetic/plain/files', 2)
+                pulse.report_path = report
+                pulse.report_expected = {'first', 'second'}
+                pulse.draw()
+                self.assertIn('Checked 1/2', terminal.getvalue())
+                with report.open('ab') as stream:
+                    stream.write(b'\n= first\n')
+                pulse.draw()
+                self.assertIn('Checked 2/2', terminal.getvalue())
+                self.assertEqual(pulse.completed, 2)
 
 
 @unittest.skipUnless(shutil.which("rclone"), "rclone is needed for local round trips")
@@ -93,6 +207,13 @@ class TransportTests(unittest.TestCase):
     def cli(self, *args, extra_env=None):
         env = self.environment | (extra_env or {})
         return subprocess.run([sys.executable, str(SCRIPT), "--config-dir", str(self.config), *args], env=env, capture_output=True, text=True)
+
+    def test_local_check_scan_updates_path_count(self):
+        pulse = M['MountPulse']('Local scan', show_count=True)
+        scan = M['scan_policy'](M['Policy'](self.config, self.home), pulse)
+        self.assertFalse(scan.errors)
+        self.assertGreater(pulse.completed, 0)
+        self.assertEqual(pulse.completed, 3)  # project directory and its two files
 
     def run_backup(self):
         result = self.cli("run", "--target", "google", "--json")
@@ -146,6 +267,21 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(json.loads(result.stdout)['ok'])
         self.assertIn('warnings', json.loads(result.stdout))
+
+    def test_remote_check_formats_warnings_and_reports_local_selection(self):
+        link = self.source / 'link.txt'
+        link.symlink_to(self.normal)
+        result = self.cli('check', '--remote', '--target', 'google')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'WARNING: {link}: symlink; target not traversed.', result.stdout)
+        self.assertIn('Plain: 2; private: 0; skipped:', result.stdout)
+        self.assertIn('selected size:', result.stdout)
+        self.assertIn('Inventory google/plain/current: in progress...', result.stderr)
+        self.assertIn('Inventory google/plain/current:', result.stderr)
+        self.assertIn('entries read', result.stderr)
+        structured = self.cli('check', '--remote', '--target', 'google', '--json')
+        self.assertEqual(structured.returncode, 0, structured.stdout + structured.stderr)
+        self.assertEqual(json.loads(structured.stdout)['summary']['plain'], 2)
 
     def test_remote_check_rejects_same_file_in_plain_and_private(self):
         self.run_backup()

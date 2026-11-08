@@ -98,11 +98,17 @@ class UiTests(unittest.TestCase):
                 return True
 
         with patch.dict(os.environ, {'TERM': 'xterm-256color', 'NO_COLOR': '',
-                                     'PYTHON_COLORS': ''}):
+                                     'PYTHON_COLORS': '', 'ZSH_THEME_MODE': 'light'}):
             self.assertEqual(M['ui']('google/plain current', 'subtle', Terminal()),
                              '\x1b[2;90mgoogle/plain current\x1b[0m')
+            self.assertEqual(M['ui']('google/plain current', 'remote', Terminal()),
+                             '\x1b[1;38;2;37;86;152mgoogle/plain current\x1b[0m')
             self.assertEqual(M['ui']('google/plain current', 'subtle', io.StringIO()),
                              'google/plain current')
+        with patch.dict(os.environ, {'TERM': 'xterm-256color', 'NO_COLOR': '',
+                                     'PYTHON_COLORS': '', 'ZSH_THEME_MODE': 'dark'}):
+            self.assertEqual(M['ui']('google/plain current', 'remote', Terminal()),
+                             '\x1b[1;38;2;139;181;236mgoogle/plain current\x1b[0m')
 
 
 if __name__ == '__main__':
