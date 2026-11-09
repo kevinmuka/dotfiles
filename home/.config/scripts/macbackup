@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.1"
+VERSION = "0.14.2"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -85,6 +85,7 @@ ITALIAN_TO_ENGLISH = {
     'Recupero file': 'Restoring file', 'Verifica copia recuperata': 'Checking restored copy',
     'Verifica piano forget': 'Checking forget plan', 'Controllo copie residue': 'Checking remaining copies',
     'Analisi layout': 'Analyzing layout', 'Verifica ': 'Verifying ',
+    'Confronto dimensioni ': 'Comparing sizes ',
     'Inventario ': 'Inventory ', 'Avvio ': 'Starting ',
     'in corso...': 'in progress...',
     ' voci lette': ' entries read', 'metadati ': 'metadata ',
@@ -1881,13 +1882,11 @@ class MountPulse:
         if not self.interactive:
             print(f'{label}: in corso...', file=sys.stderr, flush=True)
 
-    def draw(self, metadata_bytes: int | None = None) -> None:
-        if not self.interactive:
-            return
-        width, block = 22, 5
-        if self.report_path is not None:
+    def refresh_report(self) -> None:
+        report_path = self.report_path
+        if report_path is not None:
             try:
-                with self.report_path.open('rb') as stream:
+                with report_path.open('rb') as stream:
                     stream.seek(self.report_offset)
                     new_data = stream.read()
                     self.report_offset = stream.tell()
@@ -1904,23 +1903,13 @@ class MountPulse:
                     self.completed = len(self.report_seen)
             except FileNotFoundError:
                 pass
-        if self.byte_fd is not None and self.byte_total is not None:
-            received = os.fstat(self.byte_fd).st_size
-            filled = width * min(received, self.byte_total) // max(self.byte_total, 1)
-            bar = '#' * filled + '.' * (width - filled)
-        elif self.total is None:
-            offset = int((time.monotonic() - self.started) * 5) % (width + block)
-            bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
-                          for index in range(width))
-        else:
-            filled = width * min(self.completed, self.total) // max(self.total, 1)
-            bar = '#' * filled + '.' * (width - filled)
-        elapsed = int(time.monotonic() - self.started)
-        detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
-                  if metadata_bytes is not None else '')
+
+    def count_detail(self) -> str:
+        detail = ''
         if self.total is not None:
             verb = {'removed': ('Removed', 'Rimossi'),
-                    'archived': ('Archived', 'Archiviati')}.get(
+                    'archived': ('Archived', 'Archiviati'),
+                    'processed': ('Processed', 'Elaborati')}.get(
                         self.count_verb, ('Checked', 'Verificati'))
             count = f'{verb[0 if macbackup_language() == "en" else 1]} {self.completed}/{self.total}'
             detail += '  ' + terminal_style(count, '2;90', sys.stderr)
@@ -1942,12 +1931,35 @@ class MountPulse:
             detail += ('  ' + terminal_style(label, '2;90', sys.stderr) + ' '
                        + progress_quantity(received, False) + ' / '
                        + progress_quantity(self.byte_total, False))
+        return detail
+
+    def draw(self, metadata_bytes: int | None = None) -> None:
+        if not self.interactive:
+            return
+        self.refresh_report()
+        width, block = 22, 5
+        if self.byte_fd is not None and self.byte_total is not None:
+            received = os.fstat(self.byte_fd).st_size
+            filled = width * min(received, self.byte_total) // max(self.byte_total, 1)
+            bar = '#' * filled + '.' * (width - filled)
+        elif self.total is None:
+            offset = int((time.monotonic() - self.started) * 5) % (width + block)
+            bar = ''.join('#' if (index - offset) % (width + block) < block else '.'
+                          for index in range(width))
+        else:
+            filled = width * min(self.completed, self.total) // max(self.total, 1)
+            bar = '#' * filled + '.' * (width - filled)
+        elapsed = int(time.monotonic() - self.started)
+        detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
+                  if metadata_bytes is not None else '')
+        detail += self.count_detail()
         title = terminal_style(self.label, '1;36', sys.stderr)
         progress = terminal_style(f'[{bar}]', '34', sys.stderr)
         sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}'))
         sys.stderr.flush()
 
     def done(self, detail: str) -> None:
+        self.refresh_report()
         if self.interactive:
             sys.stderr.write('\r\x1b[2K')
         elapsed = int(time.monotonic() - self.started)
@@ -1957,7 +1969,8 @@ class MountPulse:
                        if macbackup_language() == 'en' else detail)
         status = terminal_style(status_text, color, sys.stderr)
         title = terminal_style(self.label, '1;36', sys.stderr)
-        print(f'{title}: {status} ({elapsed}s).', file=sys.stderr, flush=True)
+        counts = self.count_detail() if detail in ('completato', 'interrotto', 'errore') else ''
+        print(f'{title}: {status} ({elapsed}s).{counts}', file=sys.stderr, flush=True)
 
 
 def mount_input_wait(input_fd: int | None, timeout: float) -> None:
@@ -2541,6 +2554,9 @@ def private_changes(plan: dict, state: Path, pulse: MountPulse | None = None) ->
                     changed.add(name)
             if checked != to_check:
                 raise TransportError("Non tutti i file privati sono stati verificati; operazione bloccata.")
+            if pulse is not None:
+                pulse.report_path = None
+                pulse.completed = len(checked)
     return sorted(changed | set(plan["deletions"]))
 
 
@@ -2589,6 +2605,7 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
             arguments.extend(('--combined', str(report)))
             with operation_activity(label, len(names), report_non_tty=True) as pulse:
                 if pulse is not None:
+                    pulse.count_verb = 'processed'
                     pulse.report_path = report
                     pulse.report_expected = set(names)
                 rclone_call(*arguments)
@@ -3348,7 +3365,7 @@ def verify_report(source: str, destination: str, names: list[str],
             listing = mount_inventory(destination,
                                       original_label.removeprefix('Verifica ') + '/current',
                                       options=options, activity=pulse)
-            pulse.label = original_label
+            pulse.label = 'Confronto dimensioni ' + original_label.removeprefix('Verifica ')
             pulse.total = len(names)
             pulse.completed = 0
             pulse.show_count = False
@@ -3413,6 +3430,9 @@ def verify_report(source: str, destination: str, names: list[str],
             found[name] = line[0]
         if set(found) != expected:
             raise TransportError('Non tutti i file selezionati sono stati verificati.')
+        if pulse is not None:
+            pulse.report_path = None
+            pulse.completed = len(found)
         return {
             'selected': len(names),
             'matched': sum(value == '=' for value in found.values()),

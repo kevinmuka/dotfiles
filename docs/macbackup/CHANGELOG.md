@@ -6,6 +6,12 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-08 — retain final progress counts (0.14.2)
+
+- Completed, interrupted, and failed progress phases retain their last count in the final status line. This makes fast `verify --size-only` comparisons visible after the remote inventory phase and also preserves the final counters for scans, inventories, searches, removals, and restores.
+- `verify` still shows `Checked x/y` during content comparison; its size-only variant first shows `Entries read x` while listing cloud `current`, then `Checked x/y` while comparing selected local files. The final count is taken from the validated comparison report when available.
+- The dry-run part of `preview --simulate` uses `Processed x/y` for rclone decisions; it does not label those decisions as content checks. Other phases retain their own units, such as paths visited, entries read, copies removed or archived, and bytes received.
+
 ## 2026-11-07 — consistent operation progress (0.14.1)
 
 - Local scans show visited paths. Cloud `current` inventories show entries read separately in `check --remote`, `preview --target`, and `run`; a live count does not imply a known final total. The same streaming reader is used for size-only verification and searches in `versions`, `forget`, and `restore`, without adding a second inventory pass.

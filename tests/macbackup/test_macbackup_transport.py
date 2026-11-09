@@ -42,6 +42,48 @@ class VerifyProgressTests(unittest.TestCase):
             pulse.draw()
         self.assertIn('\x1b[2;90mEntries read 42\x1b[0m', terminal.getvalue())
 
+    def test_completed_phase_keeps_the_final_count(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                'NO_COLOR': '', 'PYTHON_COLORS': ''}):
+            checked = M['MountPulse']('Verifying google/plain/files', 3)
+            checked.completed = 3
+            checked.done('completato')
+            inventory = M['MountPulse']('Inventory google/plain/current', show_count='entries')
+            inventory.completed = 42
+            inventory.done('completato')
+        output = terminal.getvalue()
+        self.assertIn('(0s).  \x1b[2;90mChecked 3/3\x1b[0m', output)
+        self.assertIn('(0s).  \x1b[2;90mEntries read 42\x1b[0m', output)
+
+    def test_size_only_verification_names_its_comparison_and_keeps_final_count(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / 'a.txt').write_bytes(b'abc')
+            terminal = Terminal()
+            with patch.object(sys, 'stderr', terminal), patch.dict(os.environ, {
+                    'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
+                    'NO_COLOR': '', 'PYTHON_COLORS': ''}), \
+                    patch.dict(M['verify_report'].__globals__, {
+                        'mount_inventory': lambda *args, **kwargs: [
+                            {'Path': 'a.txt', 'Size': 3}]}, clear=False):
+                pulse = M['MountPulse']('Verifica google/plain/files', 1)
+                result = M['verify_report'](str(source), 'synthetic:', ['a.txt'],
+                                            source, False, False, True, pulse)
+                pulse.done('completato')
+            self.assertEqual(result['matched'], 1)
+            self.assertIn('Comparing sizes google/plain/files', terminal.getvalue())
+            self.assertIn('Checked 1/1', terminal.getvalue())
+
     def test_restore_and_apply_progress_use_their_own_units(self):
         class Terminal(io.StringIO):
             def isatty(self):
@@ -152,14 +194,16 @@ class VerifyProgressTests(unittest.TestCase):
                     'MACBACKUP_LANG': 'en', 'TERM': 'xterm-256color',
                     'NO_COLOR': '', 'PYTHON_COLORS': ''}):
                 pulse = M['MountPulse']('Preview synthetic/plain/files', 2)
+                pulse.count_verb = 'processed'
                 pulse.report_path = report
                 pulse.report_expected = {'first', 'second'}
                 pulse.draw()
-                self.assertIn('Checked 1/2', terminal.getvalue())
+                self.assertIn('Processed 1/2', terminal.getvalue())
                 with report.open('ab') as stream:
                     stream.write(b'\n= first\n')
                 pulse.draw()
-                self.assertIn('Checked 2/2', terminal.getvalue())
+                self.assertIn('Processed 2/2', terminal.getvalue())
+                self.assertNotIn('Checked 2/2', terminal.getvalue())
                 self.assertEqual(pulse.completed, 2)
 
 
@@ -240,6 +284,7 @@ class TransportTests(unittest.TestCase):
         self.assertFalse(self.current.exists())
         self.assertIn('Preview google/plain/files: in progress...', result.stderr)
         self.assertIn('Preview google/plain/files: complete', result.stderr)
+        self.assertIn('Processed ', result.stderr)
 
     def test_simulation_requires_remote_target(self):
         result = self.cli('preview', '--local', '--simulate')
