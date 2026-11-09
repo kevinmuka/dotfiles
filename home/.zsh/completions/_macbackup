@@ -82,7 +82,7 @@ case "$state" in
         _arguments \
           '(- *)'{-h,--help}'[show help]' \
           '--json[JSON output]' \
-          '1::plain folder (default: current directory):_macbackup_absolute_path -/'
+          '1::plain folder (default\: current directory):_macbackup_absolute_path -/'
         ;;
       preview)
         _arguments \

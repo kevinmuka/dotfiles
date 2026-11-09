@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.2"
+VERSION = "0.14.3"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -114,7 +114,9 @@ ITALIAN_TO_ENGLISH = {
     'Spostamenti sul cloud:': 'Server-side moves:',
     'Trasferiti ': 'Transferred ', 'controllati ': 'checked ',
     'selezionati ': 'selected ', 'da archiviare per cancellazione ': 'to archive after local deletion ',
+    'da archiviare perché assenti dalla selezione locale ': 'to archive because absent from local selection ',
     'da archiviare per policy ': 'to archive due to policy ',
+    'Assente dalla selezione locale:': 'Absent from local selection:',
     'una run si fermerebbe prima dei trasferimenti.': 'a run would stop before transfers.',
     ' supera max_delete=': ' exceeds max_delete=',
     'La selezione locale contiene errori. Eseguire macbackup check.':
@@ -1479,12 +1481,11 @@ def progress_duration(value: object) -> str:
     days, seconds = divmod(seconds, 86400)
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
-    parts = []
-    for amount, suffix in ((days, 'd'), (hours, 'h'), (minutes, 'm')):
-        if amount or parts:
-            parts.append(f'{amount}{suffix}')
-    parts.append(f'{seconds}s')
-    return ' '.join(parts)
+    parts = [f'{amount}{suffix}' for amount, suffix in
+             ((days, 'd'), (hours, 'h'), (minutes, 'm'), (seconds, 's')) if amount]
+    if not parts:
+        parts.append('0s')
+    return ''.join(parts)
 
 
 def progress_bar(done: object, total: object, width: int = 28) -> str:
@@ -1949,20 +1950,20 @@ class MountPulse:
         else:
             filled = width * min(self.completed, self.total) // max(self.total, 1)
             bar = '#' * filled + '.' * (width - filled)
-        elapsed = int(time.monotonic() - self.started)
+        elapsed = progress_duration(time.monotonic() - self.started)
         detail = (f'  metadati {metadata_bytes / 1048576:.1f} MiB'
                   if metadata_bytes is not None else '')
         detail += self.count_detail()
         title = terminal_style(self.label, '1;36', sys.stderr)
         progress = terminal_style(f'[{bar}]', '34', sys.stderr)
-        sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}s{detail}'))
+        sys.stderr.write(localized(f'\r\x1b[2K{title} {progress} {elapsed}{detail}'))
         sys.stderr.flush()
 
     def done(self, detail: str) -> None:
         self.refresh_report()
         if self.interactive:
             sys.stderr.write('\r\x1b[2K')
-        elapsed = int(time.monotonic() - self.started)
+        elapsed = progress_duration(time.monotonic() - self.started)
         color = '31' if detail == 'errore' else '33' if detail == 'interrotto' else '32'
         status_text = ({'completato': 'complete', 'interrotto': 'interrupted',
                         'errore': 'error'}.get(detail, detail)
@@ -1970,7 +1971,7 @@ class MountPulse:
         status = terminal_style(status_text, color, sys.stderr)
         title = terminal_style(self.label, '1;36', sys.stderr)
         counts = self.count_detail() if detail in ('completato', 'interrotto', 'errore') else ''
-        print(f'{title}: {status} ({elapsed}s).{counts}', file=sys.stderr, flush=True)
+        print(f'{title}: {status} ({elapsed}).{counts}', file=sys.stderr, flush=True)
 
 
 def mount_input_wait(input_fd: int | None, timeout: float) -> None:
@@ -2628,6 +2629,15 @@ def archive_policy_copies(plan: dict, run_id: str, completed: list[dict],
             activity.completed += 1
 
 
+def archive_deleted_paths(plan: dict) -> list[str]:
+    """Return original Mac paths, not rclone link or Finder icon sidecar names."""
+    if plan.get('kind') == 'macos-icons':
+        return [str(Path('/' + name[:-len(ICON_SIDECAR)]) / FINDER_ICON)
+                for name in plan['deletions']]
+    return ['/' + (name[:-len('.rclonelink')] if name.endswith('.rclonelink') else name)
+            for name in plan['deletions']]
+
+
 def transport_operation(args, policy: Policy) -> int:
     if getattr(args, 'progress_depth', 2) not in range(1, 6):
         raise ConfigError('--progress-depth deve essere un intero fra 1 e 5.')
@@ -2667,6 +2677,8 @@ def transport_operation(args, policy: Policy) -> int:
                 {key: value for key, value in item.items() if key != 'relative'}
                 for item in plan['policy_archives']
             ]
+            if args.command == 'preview':
+                result['archive_deleted_paths'] = archive_deleted_paths(plan)
             if args.command == 'run':
                 result['policy_archived'] = []
             if args.command == 'run':
@@ -2726,9 +2738,14 @@ def transport_operation(args, policy: Policy) -> int:
             print(ui(data["note"], 'subtle'))
             for result in results:
                 outcome = ui('OK', 'success') if result['ok'] else ui('ERRORE', 'error')
+                absence_label = ('da archiviare perché assenti dalla selezione locale'
+                                 if args.command == 'preview' else 'da archiviare per cancellazione')
                 print(f"{ui(result['target'] + '/' + result['area'] + '/' + result['kind'], 'remote')}: {outcome}; "
-                      f"selezionati {result['selected']}; da archiviare per cancellazione {result['archive_deleted']}; "
+                      f"selezionati {result['selected']}; {absence_label} {result['archive_deleted']}; "
                       f"da archiviare per policy {result['archive_policy']}.")
+                if args.command == 'preview':
+                    for path in result['archive_deleted_paths']:
+                        print(f"  Assente dalla selezione locale: {ui(path.replace(chr(13), r'\r'), 'muted')}")
                 for item in result['policy_archives']:
                     print(f"  Policy: {item['path']} → {item['new_action']}; {item['reason']}" +
                           (f" Regola: {item['rule']}" if item['rule'] else ''))
@@ -3190,7 +3207,7 @@ def versions_operation(args, config: Path, home: Path) -> int:
             print(f"{ui('Versioni della directory', 'info')} {requested}: {len(versions)} gruppi; "
                   f"{len(items)} elementi complessivi.")
             for group in versions:
-                print(f"{ui('▸ ' + group['target'] + '/' + group['area'] + ' ' + group['version'], 'remote')}: "
+                print(f"{ui(group['target'] + '/' + group['area'] + ' ' + group['version'], 'remote')}: "
                       f"{group['count']} elementi, {progress_quantity(group['bytes'], False)}")
                 if args.files and group['location'] == 'history':
                     for item in group['items']:
@@ -3216,7 +3233,7 @@ def versions_operation(args, config: Path, home: Path) -> int:
     else:
         print(f"{ui('Versioni trovate:', 'info')} {len(items)} per {requested}.")
         for item in data['versions']:
-            print(f"{ui('▸ ' + item['target'] + '/' + item['area'] + ' ' + item['version'], 'remote')} "
+            print(f"{ui(item['target'] + '/' + item['area'] + ' ' + item['version'], 'remote')} "
                   f"{progress_quantity(item['size'], False)} {item['modtime'] or 'data ignota'}")
         print(ui(data['note'], 'subtle'))
     return 0

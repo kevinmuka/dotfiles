@@ -103,6 +103,13 @@ class IconTests(unittest.TestCase):
         self.run_backup()
         original = self.icon_file().read_bytes()
         icon.unlink()
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        row = next(item for item in json.loads(preview.stdout)['results']
+                   if item['area'] == 'plain' and item['kind'] == 'macos-icons')
+        self.assertEqual(row['archive_deleted_paths'], [str(icon)])
+        readable = self.cli('preview', '--target', 'google')
+        self.assertIn('Absent from local selection: ' + str(icon).replace('\r', r'\r'), readable.stdout)
         self.run_backup()
         self.assertFalse(self.icon_file().exists())
         history = self.base / 'plain-store/MacBackup/plain/macos-icons/history'

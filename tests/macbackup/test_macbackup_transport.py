@@ -61,6 +61,27 @@ class VerifyProgressTests(unittest.TestCase):
         self.assertIn('(0s).  \x1b[2;90mChecked 3/3\x1b[0m', output)
         self.assertIn('(0s).  \x1b[2;90mEntries read 42\x1b[0m', output)
 
+    def test_long_phase_durations_use_compact_hours_minutes_seconds(self):
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+
+        terminal = Terminal()
+        with patch.object(sys, 'stderr', terminal), patch.object(M['time'], 'monotonic', return_value=6270):
+            pulse = M['MountPulse']('Inventory google/plain/current', show_count='entries')
+            pulse.started = 0
+            pulse.draw()
+            pulse.done('completato')
+        output = terminal.getvalue()
+        self.assertIn('1h44m30s', output)
+        self.assertNotIn('6270s', output)
+        self.assertEqual(M['progress_duration'](59), '59s')
+        self.assertEqual(M['progress_duration'](150), '2m30s')
+        self.assertEqual(M['progress_duration'](620), '10m20s')
+        self.assertEqual(M['progress_duration'](60), '1m')
+        self.assertEqual(M['progress_duration'](3605), '1h5s')
+        self.assertEqual(M['progress_duration'](0), '0s')
+
     def test_size_only_verification_names_its_comparison_and_keeps_final_count(self):
         class Terminal(io.StringIO):
             def isatty(self):
@@ -278,6 +299,48 @@ class TransportTests(unittest.TestCase):
         self.assertIn('content differences not checked', json.loads(result.stdout)['note'])
         self.assertNotIn('Preview google/plain/files:', result.stderr)
 
+    def test_preview_identifies_local_selection_absences_in_text_and_json(self):
+        private = self.source / 'private-config'
+        private.mkdir()
+        private_file = private / 'settings.ini'
+        private_file.write_text('synthetic private settings')
+        (self.config / 'private-paths.txt').write_text(str(private) + '/\n')
+        self.run_backup()
+        self.normal.unlink()
+        private_file.unlink()
+
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        rows = {item['area']: item for item in json.loads(preview.stdout)['results']
+                if item['kind'] == 'files'}
+        self.assertEqual(rows['plain']['archive_deleted_paths'], [str(self.normal)])
+        self.assertEqual(rows['private']['archive_deleted_paths'], [str(private_file)])
+        self.assertEqual(rows['plain']['archive_deleted'], 1)
+        self.assertEqual(rows['private']['archive_deleted'], 1)
+        self.assertTrue(self.remote_path(self.normal).exists())
+
+        readable = self.cli('preview', '--target', 'google')
+        self.assertEqual(readable.returncode, 0, readable.stdout + readable.stderr)
+        self.assertIn('to archive because absent from local selection 1', readable.stdout)
+        self.assertIn('Absent from local selection: ' + str(self.normal), readable.stdout)
+        self.assertIn('Absent from local selection: ' + str(private_file), readable.stdout)
+
+    def test_preview_uses_original_symlink_path_and_keeps_policy_archives_separate(self):
+        link = self.source / 'normal-link'
+        link.symlink_to('normal.txt')
+        self.run_backup()
+        link.unlink()
+        self.rules(excluded=True)
+
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        row = next(item for item in json.loads(preview.stdout)['results']
+                   if item['area'] == 'plain' and item['kind'] == 'files')
+        self.assertEqual(row['archive_deleted_paths'], [str(link)])
+        self.assertEqual(row['archive_policy'], 1)
+        self.assertEqual(row['policy_archives'][0]['path'], str(self.normal))
+        self.assertNotIn('.rclonelink', json.dumps(row['archive_deleted_paths']))
+
     def test_simulated_preview_retains_transfer_dry_run(self):
         result = self.cli('preview', '--target', 'google', '--simulate', '--json')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -437,7 +500,7 @@ except module['TransferInterrupted'] as exc:
         display.stats = stats
         binary = '\n'.join(M['progress_lines'](stats, self.home, 2, True, False,
                                               display.label))
-        self.assertIn('Tempo 1m 5s', binary)
+        self.assertIn('Tempo 1m5s', binary)
         self.assertIn('1.0 MiB / 2.0 MiB', binary)
         self.assertIn('VELOCITÀ  1.0 MiB/s', binary)
         self.assertIn('[#################------------------]', binary)

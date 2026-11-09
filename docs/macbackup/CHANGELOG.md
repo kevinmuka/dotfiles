@@ -1,10 +1,18 @@
 # macbackup: technical changelog and test record
 
-This record preserves decisions, changes, and tests useful to macbackup maintainers, including future agents. It covers major milestones rather than every intermediate version. The [user manual](README.md) describes current behavior; an [Italian translation](README.it.md) is available for readers who prefer it. The script, tests, and local configuration remain authoritative. Counts and paths below are **historical snapshots**, not values to copy or claims about the current backup.
+This record preserves decisions, changes, and tests useful to macbackup maintainers, including future agents. It covers major milestones rather than every intermediate version. The [user manual](README.md) describes current behavior; an [Italian translation](README.it.md) is available for readers who prefer it. The [policy reference](POLICY_DESIGN.md) separates detailed policy usage from the enduring rationale and invariants, outside this chronology. The script, tests, and local configuration remain authoritative. Counts and paths below are **historical snapshots**, not values to copy or claims about the current backup.
 
 When a rule changes, update the manual first if the user contract changes. Then record the reason, risk, tests, and remaining limits here. Do not publish secrets, tokens, or personal inventories.
 
 ---
+
+## 2026-11-09 — inspect planned archives after local selection changes (0.14.3)
+
+- Remote `preview` now lists every current copy that remains classified in its area but is absent from the local selection, in readable output and the additive JSON field `archive_deleted_paths`. This is an observation about selection, not proof of physical deletion. Policy archives remain a separate list.
+- Display original Mac paths for symlinks and Finder icons instead of their rclone representations. The readable output escapes the icon filename's carriage return. The plan still respects `max_delete`; preview remains read-only and does not reserve state for `run`.
+- Synthetic plain, private, symlink, and Finder icon cases cover the reported paths without accessing a live cloud provider.
+- Moved the implemented typed-rule and overlap rationale out of the TODO into `POLICY_DESIGN.md`. The manuals retain the user-facing precedence and hard-link safety explanation; the TODO now contains only the pending live archive-path review.
+- Format elapsed times and `run` estimates consistently as compact days, hours, minutes, and seconds, omitting zero-valued units. This affects the interactive bar, completed phase lines, and transfer screen; it does not alter JSON fields or backup behavior.
 
 ## 2026-11-08 — retain final progress counts (0.14.2)
 
@@ -25,6 +33,8 @@ When a rule changes, update the manual first if the user contract changes. Then 
 - `preview --target ... --simulate` retains the former deeper, read-only comparison and dry run. Activity indicators identify the active target and area, show elapsed time, and count completed private comparisons. JSON stdout remains parseable; progress is on stderr. The English and Italian manuals, help, and Zsh completions describe both modes.
 
 ## 2026-11-07 — typed selection rules and overlap validation (0.13.0)
+
+The lasting reasons for these rules and their safety boundaries are collected in [POLICY_DESIGN.md](POLICY_DESIGN.md).
 
 - Path lists now require a trailing `/` for directories and no trailing `/` for files or symlinks. Existing paths with a mismatched declared type fail before cloud access; missing exclusions retain their declared type until they appear. A directly included source covered by an ancestor exclusion is suspended, reported as a warning, and may be absent. Identical normalized paths within or across lists are rejected; distinct overlapping parent and child paths retain their precedence.
 - Explicit-only patterns now declare their type in the same way: `.env` protects files or symlinks, and `node_modules/` protects directories. `init` and the migrated configuration include both file and directory forms of `.env` and `.env.*`, preserving protection for future directories with those names. Name policies remain case-insensitive while absolute paths remain case-sensitive. Case-only duplicates and unsafe overlaps with `private_directory_names` or `ignored_file_names` are rejected. In particular, combining an ignored filename with an explicit-only file pattern could bypass explicit-only's hard-link alias check; the error keeps that protection visible. Fully redundant patterns fail; demonstrable partial overlap warns.
