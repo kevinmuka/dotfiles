@@ -187,7 +187,7 @@ class MacbackupCompletionTests(unittest.TestCase):
                 session.close()
 
     def test_subcommand_specific_flags_complete(self):
-        for command, prefix, flag in (("check", "--j", "--json"), ("explain", "--j", "--json"), ("layout", "--j", "--json"), ("preview", "--lo", "--local"), ("preview", "--j", "--json"), ("run", "--progress-d", "--progress-depth="), ("init", "--he", "--help")):
+        for command, prefix, flag in (("check", "--j", "--json"), ("explain", "--j", "--json"), ("layout", "--j", "--json"), ("preview", "--lo", "--local"), ("preview", "--j", "--json"), ("run", "--progress-d", "--progress-depth="), ("status", "--ver", "--verify"), ("init", "--he", "--help")):
             with self.subTest(command=command, flag=flag):
                 self.assertEqual(self.session.complete(f"macbackup {command} {prefix}").strip(), f"macbackup {command} {flag}")
 

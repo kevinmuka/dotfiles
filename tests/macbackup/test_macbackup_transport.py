@@ -21,6 +21,14 @@ M = runpy.run_path(str(SCRIPT))
 
 
 class VerifyProgressTests(unittest.TestCase):
+    def test_verification_text_uses_original_safe_paths(self):
+        self.assertEqual(M['verify_display_path']('Users/example/link.rclonelink', 'files'),
+                         '/Users/example/link')
+        self.assertEqual(M['verify_display_path']('Users/example/folder/icon.json', 'macos-icons'),
+                         r'/Users/example/folder/Icon\r')
+        self.assertEqual(M['verify_display_path']('Users/example/a\nb', 'files'),
+                         r'/Users/example/a\nb')
+
     def test_inventory_counter_handles_chunks_nested_values_and_escaped_names(self):
         counter = M['JsonArrayObjectCounter']()
         for chunk in (b'[\n{"Path":"a\\\"}b","Meta":{"n":1}},\n{"Path":',
@@ -324,6 +332,110 @@ class TransportTests(unittest.TestCase):
         self.assertIn('to archive because absent from local selection 1', readable.stdout)
         self.assertIn('Absent from local selection: ' + str(self.normal), readable.stdout)
         self.assertIn('Absent from local selection: ' + str(private_file), readable.stdout)
+
+    def test_run_status_keeps_planned_absences_and_partial_phase_state(self):
+        self.run_backup()
+        self.normal.unlink()
+        observed = []
+
+        def interrupted_sync(*args, **kwargs):
+            observed.append(json.loads((self.home / '.local/state/macbackup/last-run.json').read_text()))
+            raise KeyboardInterrupt
+
+        args = argparse.Namespace(command='run', target='google', json=True, progress_depth=2)
+        with patch.dict(os.environ, self.environment), \
+                patch.dict(M['transport_operation'].__globals__, {'perform_sync': interrupted_sync}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(M['transport_operation'](args, M['Policy'](self.config, self.home)), 1)
+        self.assertEqual(observed[0]['active_phase'], 'google/plain/files')
+        self.assertFalse(observed[0]['complete'])
+        self.assertEqual(observed[0]['results'][0]['archive_deleted_paths'], [str(self.normal)])
+        saved = json.loads((self.home / '.local/state/macbackup/last-run.json').read_text())
+        self.assertTrue(saved['interrupted'])
+        self.assertFalse(saved['complete'])
+        self.assertEqual(saved['active_phase'], 'google/plain/files')
+        self.assertEqual(saved['results'][0]['archive_deleted_paths'], [str(self.normal)])
+        self.assertEqual(saved['results'][0]['archive_deleted_completed_paths'], [])
+
+    def test_interrupted_run_confirms_only_copies_found_in_its_history(self):
+        other = self.source / 'other.txt'
+        other.write_text('another synthetic file')
+        self.run_backup()
+        self.normal.unlink()
+        other.unlink()
+
+        def partly_archived(plan, state, run_id, *args):
+            original = self.remote_path(self.normal)
+            history = self.base / 'plain-store/MacBackup/plain/history' / run_id / str(self.normal).lstrip('/')
+            history.parent.mkdir(parents=True)
+            original.rename(history)
+            (history.parent / 'previous-version.txt').write_text('unrelated history item')
+            raise KeyboardInterrupt
+
+        args = argparse.Namespace(command='run', target='google', json=True, progress_depth=2)
+        with patch.dict(os.environ, self.environment), \
+                patch.dict(M['transport_operation'].__globals__, {'perform_sync': partly_archived}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(M['transport_operation'](args, M['Policy'](self.config, self.home)), 1)
+        saved = json.loads((self.home / '.local/state/macbackup/last-run.json').read_text())
+        row = saved['results'][0]
+        self.assertCountEqual(row['archive_deleted_paths'], [str(self.normal), str(other)])
+        self.assertEqual(row['archive_deleted_completed_paths'], [str(self.normal)])
+        self.assertTrue(self.remote_path(other).exists())
+
+    def test_unreadable_history_does_not_report_zero_completed_archives(self):
+        plan = {'target': 'google', 'area': 'plain', 'root': 'localplain:MacBackup/plain',
+                'deletions': ['Users/example/a.txt']}
+        with patch.dict(M['completed_deleted_archive_paths'].__globals__, {
+                'remote_current_objects': lambda *args: (_ for _ in ()).throw(M['TransportError']('offline'))}):
+            self.assertIsNone(M['completed_deleted_archive_paths'](plan, 'synthetic-run'))
+
+    def test_completed_archive_paths_are_read_through_crypt_remote(self):
+        self.rules(private=True)
+        self.run_backup()
+        relative = str(self.secret).lstrip('/')
+        with patch.dict(os.environ, self.environment):
+            M['rclone_call']('moveto', 'localcrypt:current/' + relative,
+                             'localcrypt:history/synthetic-run/' + relative)
+            completed = M['completed_deleted_archive_paths']({
+                'target': 'google', 'area': 'private', 'root': 'localcrypt:',
+                'deletions': [relative], 'kind': 'files'}, 'synthetic-run')
+        self.assertEqual(completed, [str(self.secret)])
+
+    def test_successful_run_status_keeps_archive_paths(self):
+        self.run_backup()
+        self.normal.unlink()
+        readable = self.cli('run', '--target', 'google')
+        self.assertEqual(readable.returncode, 0, readable.stdout + readable.stderr)
+        self.assertIn('Absent from local selection: ' + str(self.normal), readable.stdout)
+        self.assertIn('Archived for absence from local selection: 1/1.', readable.stdout)
+        saved = self.cli('status')
+        self.assertEqual(json.loads(saved.stdout)['results'][0]['archive_deleted_paths'], [str(self.normal)])
+        self.assertEqual(json.loads(saved.stdout)['results'][0]['archive_deleted_completed_paths'], [str(self.normal)])
+        self.assertEqual((self.home / '.local/state/macbackup/last-run.json').stat().st_mode & 0o777, 0o600)
+
+    def test_run_status_exposes_completed_phase_while_next_phase_is_active(self):
+        self.rules(private=True)
+        real_sync = M['perform_sync']
+        observed = []
+
+        def stop_in_second_phase(*args, **kwargs):
+            if observed:
+                observed.append(json.loads((self.home / '.local/state/macbackup/last-run.json').read_text()))
+                raise KeyboardInterrupt
+            observed.append(None)
+            return real_sync(*args, **kwargs)
+
+        args = argparse.Namespace(command='run', target='google', json=True, progress_depth=2)
+        with patch.dict(os.environ, self.environment), \
+                patch.dict(M['transport_operation'].__globals__, {'perform_sync': stop_in_second_phase}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(M['transport_operation'](args, M['Policy'](self.config, self.home)), 1)
+        active = observed[1]
+        self.assertTrue(active['results'][0]['ok'])
+        self.assertFalse(active['results'][0].get('in_progress', False))
+        self.assertTrue(active['results'][1]['in_progress'])
+        self.assertEqual(active['active_phase'], 'google/private/files')
 
     def test_preview_uses_original_symlink_path_and_keeps_policy_archives_separate(self):
         link = self.source / 'normal-link'
@@ -809,12 +921,44 @@ except module['TransferInterrupted'] as exc:
         data = json.loads(changed.stdout)
         self.assertEqual(len(data['results'][0]['different']), 1)
         self.assertIn('does not prove corruption', data['note'])
+        readable = self.cli('verify', '--target', 'google', '--area', 'plain')
+        self.assertIn('Different: ' + str(self.normal), readable.stdout)
+        saved = self.cli('status', '--verify')
+        self.assertEqual(json.loads(saved.stdout)['results'][0]['different'], [str(self.normal).lstrip('/')])
+        report = self.home / '.local/state/macbackup/last-verify.json'
+        self.assertEqual(report.stat().st_mode & 0o777, 0o600)
 
     def test_verify_before_first_backup_reports_missing_copy(self):
         checked = self.cli('verify', '--target', 'google', '--area', 'plain', '--json')
         self.assertEqual(checked.returncode, 1)
         data = json.loads(checked.stdout)
         self.assertEqual(len(data['results'][0]['missing']), 1)
+        readable = self.cli('verify', '--target', 'google', '--area', 'plain')
+        self.assertIn('Missing: ' + str(self.normal), readable.stdout)
+
+    def test_interrupted_verify_saves_only_completed_phases(self):
+        self.rules(private=True)
+        calls = []
+
+        def interrupted_report(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 2:
+                raise KeyboardInterrupt
+            return {'selected': len(args[2]), 'matched': len(args[2]),
+                    'different': [], 'missing': [], 'errors': []}
+
+        args = argparse.Namespace(target='google', area='all', download=False,
+                                  size_only=False, json=True)
+        with patch.dict(os.environ, self.environment), \
+                patch.dict(M['verify_operation'].__globals__, {'verify_report': interrupted_report}):
+            with self.assertRaises(KeyboardInterrupt):
+                M['verify_operation'](args, self.config, self.home)
+        saved = json.loads((self.home / '.local/state/macbackup/last-verify.json').read_text())
+        self.assertFalse(saved['complete'])
+        self.assertTrue(saved['interrupted'])
+        self.assertEqual(saved['active_phase'], 'google/private/files')
+        self.assertEqual(len(saved['results']), 1)
+        self.assertEqual(saved['results'][0]['area'], 'plain')
 
     def test_verify_private_crypt_and_download_mode(self):
         self.rules(private=True)
@@ -863,6 +1007,10 @@ except module['TransferInterrupted'] as exc:
         self.settings(limit=0)
         result = self.cli("run", "--target", "google", "--json")
         self.assertNotEqual(result.returncode, 0)
+        status = json.loads(self.cli('status').stdout)
+        self.assertFalse(status['complete'])
+        self.assertEqual(status['active_phase'], 'planning')
+        self.assertIn('max_delete', status['error'])
         self.assertTrue(self.remote_path(self.normal).exists())
         self.assertIn("max_delete", result.stdout)
 

@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.3"
+VERSION = "0.14.5"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -98,6 +98,17 @@ ITALIAN_TO_ENGLISH = {
     'Configurazione inizializzata.': 'Configuration initialized.',
     'Nessun percorso incluso e nessun accesso cloud.': 'No paths included and no cloud access.',
     'Nessuna run registrata. Nessun backup certificato.': 'No run recorded. No backup certified.',
+    'Nessuna verifica registrata.': 'No verification recorded.',
+    "mostra l'esito memorizzato dell'ultima run o verifica":
+        'show the saved result of the latest run or verification',
+    "mostra il rapporto dell'ultima verifica": 'show the latest verification report',
+    'Verifica interrotta; solo le fasi concluse sono riportate.':
+        'Verification interrupted; only completed phases are reported.',
+    'Diverso:': 'Different:', 'Mancante:': 'Missing:',
+    'Errore di lettura:': 'Read error:',
+    'Rapporto completo: macbackup status --verify': 'Full report: macbackup status --verify',
+    'Altri ': 'Other ', ' percorsi nel rapporto salvato:': ' paths in saved report:',
+    ' percorsi in macbackup status.': ' paths in macbackup status.',
     'Interrotto dall’utente.': 'Interrupted by user.',
     "Interrotto dall'utente; i file già caricati restano sul cloud.":
         'Interrupted by user; files already uploaded remain in the cloud.',
@@ -512,6 +523,11 @@ ITALIAN_TO_ENGLISH = {
     'elementi selezionati.': 'items selected.',
     'Nessuna parte privata trovata al suo interno.': 'No private subtrees found inside it.',
     'File o directory non trovati.': 'File or directory not found.',
+    'Archiviazioni per assenza locale: completamento non verificabile.':
+        'Archives for local selection absence: completion could not be verified.',
+    'Archiviati per assenza dalla selezione locale: ':
+        'Archived for absence from local selection: ',
+    'Controllo storico': 'Checking history',
     '# Nessuna password: le credenziali rimangono nella configurazione rclone.':
         '# No passwords: credentials remain in the rclone configuration.',
     '# Percorsi assoluti da salvare consultabili; nessuna inclusione attiva.':
@@ -2638,23 +2654,54 @@ def archive_deleted_paths(plan: dict) -> list[str]:
             for name in plan['deletions']]
 
 
+def completed_deleted_archive_paths(plan: dict, run_id: str) -> list[str] | None:
+    """Confirm interrupted sync moves from this run's history, or return unknown."""
+    if not plan['deletions']:
+        return []
+    try:
+        label = f"Controllo storico {plan['target']}/{plan['area']}/{plan.get('kind', 'files')}"
+        with operation_activity(label, report_non_tty=True):
+            history = remote_current_objects(remote_join(plan['root'], 'history/' + run_id))
+    except (ConfigError, TransportError, OSError, ValueError, KeyboardInterrupt):
+        return None
+    completed = [name for name in plan['deletions'] if history.get(name) is False]
+    return archive_deleted_paths(plan | {'deletions': completed})
+
+
 def transport_operation(args, policy: Policy) -> int:
     if getattr(args, 'progress_depth', 2) not in range(1, 6):
         raise ConfigError('--progress-depth deve essere un intero fra 1 e 5.')
     targets, limit = load_targets(policy.config_dir, args.target)
     with operation_lock(policy.state_dir):
-        if args.command == 'check':
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
+        results = []
+        if args.command == 'run':
+            data = {'operation': 'run', 'run_id': run_id, 'ok': False,
+                    'complete': False, 'interrupted': False, 'active_phase': 'local-scan',
+                    'started_at': datetime.now(timezone.utc).isoformat(),
+                    'results': results, 'note': 'Esiti distinti per destinazione e area.'}
+            save_local_report(policy.state_dir, 'last-run.json', data)
+        try:
             with operation_activity('Scansione locale', show_count=True) as pulse:
                 scan = scan_policy(policy, pulse)
-            plans = transfer_plan(policy, scan, targets, limit,
-                                  enforce_limit=False, check_conflicts=True,
-                                  show_inventory=True)
-        else:
-            with operation_activity('Scansione locale', show_count=True) as pulse:
-                scan = scan_policy(policy, pulse)
-            plans = transfer_plan(policy, scan, targets, limit,
-                                  enforce_limit=args.command == 'run',
-                                  show_inventory=True)
+            if args.command == 'run':
+                data['active_phase'] = 'planning'
+                save_local_report(policy.state_dir, 'last-run.json', data)
+            if args.command == 'check':
+                plans = transfer_plan(policy, scan, targets, limit,
+                                      enforce_limit=False, check_conflicts=True,
+                                      show_inventory=True)
+            else:
+                plans = transfer_plan(policy, scan, targets, limit,
+                                      enforce_limit=args.command == 'run',
+                                      show_inventory=True)
+        except (KeyboardInterrupt, ConfigError, TransportError, OSError) as exc:
+            if args.command == 'run':
+                data.update(interrupted=isinstance(exc, KeyboardInterrupt),
+                            error=("Interrotto dall'utente." if isinstance(exc, KeyboardInterrupt)
+                                   else str(exc)))
+                save_local_report(policy.state_dir, 'last-run.json', data)
+            raise
         if args.command == "check":
             result = {"scope": "remote-read-only", "ok": True,
                       "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.",
@@ -2667,8 +2714,6 @@ def transport_operation(args, policy: Policy) -> int:
                     print(issue_line('AVVISO:', warning, 'warning'))
                 print_selection_summary(result['summary'])
             return 0
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
-        results = []
         for plan in plans:
             result = {key: plan[key] for key in ("target", "area", "selected", "archive_deleted", "archive_policy")}
             result['archive_limit_exceeded'] = plan['archive_limit_exceeded']
@@ -2677,16 +2722,21 @@ def transport_operation(args, policy: Policy) -> int:
                 {key: value for key, value in item.items() if key != 'relative'}
                 for item in plan['policy_archives']
             ]
-            if args.command == 'preview':
-                result['archive_deleted_paths'] = archive_deleted_paths(plan)
+            result['archive_deleted_paths'] = archive_deleted_paths(plan)
             if args.command == 'run':
+                result['archive_deleted_completed_paths'] = ([] if not plan['deletions'] else None)
                 result['policy_archived'] = []
+                result['ok'] = False
+                result['in_progress'] = True
+                data['active_phase'] = f"{plan['target']}/{plan['area']}/{result['kind']}"
+            results.append(result)
+            if args.command == 'run':
+                save_local_report(policy.state_dir, 'last-run.json', data)
             if args.command == 'run':
                 print(f"{ui('Avvio', 'info', sys.stderr)} {plan['target']}/{plan['area']}/{result['kind']}: "
                       f"{plan['selected']} elementi selezionati.", file=sys.stderr, flush=True)
             if args.command == 'preview' and not args.simulate:
                 result['ok'] = True
-                results.append(result)
                 continue
             try:
                 stats = perform_sync(plan, policy.state_dir, run_id, limit,
@@ -2694,6 +2744,7 @@ def transport_operation(args, policy: Policy) -> int:
                                      getattr(args, 'progress_depth', 2))
                 if args.command == 'run':
                     result.update(transfer_metrics(stats, True))
+                    result['archive_deleted_completed_paths'] = result['archive_deleted_paths'][:]
                     if plan['policy_archives']:
                         with operation_activity(
                                 f'Archiviazione policy {plan["target"]}/{plan["area"]}',
@@ -2704,54 +2755,74 @@ def transport_operation(args, policy: Policy) -> int:
                 result["ok"] = True
             except TransferInterrupted as exc:
                 result.update(transfer_metrics(exc.stats, False))
+                if args.command == 'run':
+                    result['archive_deleted_completed_paths'] = completed_deleted_archive_paths(plan, run_id)
                 result.update(ok=False, error="Interrotto dall'utente; i file già caricati restano sul cloud.")
-                results.append(result)
+                if args.command == 'run':
+                    data['interrupted'] = True
+                    result.pop('in_progress', None)
+                    save_local_report(policy.state_dir, 'last-run.json', data)
                 break
             except KeyboardInterrupt:
                 if args.command == 'run':
                     result.update(transfer_metrics(None, False))
+                    if result['archive_deleted_completed_paths'] is None:
+                        result['archive_deleted_completed_paths'] = completed_deleted_archive_paths(plan, run_id)
                 result.update(ok=False, error="Interrotto dall'utente; i file già caricati restano sul cloud.")
-                results.append(result)
+                if args.command == 'run':
+                    data['interrupted'] = True
+                    result.pop('in_progress', None)
+                    save_local_report(policy.state_dir, 'last-run.json', data)
                 break
             except (ConfigError, TransportError, OSError) as exc:
                 if args.command == 'run' and 'transferred_files' not in result:
                     result.update(transfer_metrics(getattr(exc, 'stats', None), False))
+                    result['archive_deleted_completed_paths'] = completed_deleted_archive_paths(plan, run_id)
                 result.update(ok=False, error=str(exc))
-            results.append(result)
+            if args.command == 'run':
+                result.pop('in_progress', None)
+                save_local_report(policy.state_dir, 'last-run.json', data)
         preview_note = ("Anteprima, nessuna modifica cloud." if args.simulate else
                         "Piano basato sulla selezione locale e sugli inventari current; "
                         "differenze di contenuto non verificate. Nessuna modifica cloud.") if args.command == 'preview' else None
-        data = {"operation": args.command, "run_id": run_id, "ok": all(item["ok"] for item in results),
-                "results": results, "note": preview_note if preview_note is not None else "Esiti distinti per destinazione e area."}
         if args.command == "run":
-            fd, temporary = tempfile.mkstemp(prefix="status-", dir=policy.state_dir)
-            try:
-                with os.fdopen(fd, "w") as stream:
-                    json.dump(localized_json(data), stream, ensure_ascii=False, indent=2)
-                os.replace(temporary, policy.state_dir / "last-run.json")
-            finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
+            complete = not data['interrupted'] and len(results) == len(plans)
+            data.update(ok=all(item['ok'] for item in results),
+                        complete=complete,
+                        active_phase=None if complete else data['active_phase'],
+                        finished_at=datetime.now(timezone.utc).isoformat())
+            save_local_report(policy.state_dir, 'last-run.json', data)
+        else:
+            data = {"operation": args.command, "run_id": run_id,
+                    "ok": all(item["ok"] for item in results),
+                    "results": results, "note": preview_note}
         if getattr(args, "json", False):
             print(json.dumps(data, ensure_ascii=False, indent=2))
         else:
             print(ui(data["note"], 'subtle'))
             for result in results:
                 outcome = ui('OK', 'success') if result['ok'] else ui('ERRORE', 'error')
-                absence_label = ('da archiviare perché assenti dalla selezione locale'
-                                 if args.command == 'preview' else 'da archiviare per cancellazione')
+                absence_label = 'da archiviare perché assenti dalla selezione locale'
                 print(f"{ui(result['target'] + '/' + result['area'] + '/' + result['kind'], 'remote')}: {outcome}; "
                       f"selezionati {result['selected']}; {absence_label} {result['archive_deleted']}; "
                       f"da archiviare per policy {result['archive_policy']}.")
-                if args.command == 'preview':
-                    for path in result['archive_deleted_paths']:
-                        print(f"  Assente dalla selezione locale: {ui(path.replace(chr(13), r'\r'), 'muted')}")
+                absent_paths = result['archive_deleted_paths']
+                for path in absent_paths if args.command == 'preview' else absent_paths[:20]:
+                    print(f"  Assente dalla selezione locale: {ui(display_safe_path(path), 'muted')}")
+                if args.command == 'run' and len(absent_paths) > 20:
+                    print(ui(f"  Altri {len(absent_paths) - 20} percorsi in macbackup status.", 'subtle'))
                 for item in result['policy_archives']:
                     print(f"  Policy: {item['path']} → {item['new_action']}; {item['reason']}" +
                           (f" Regola: {item['rule']}" if item['rule'] else ''))
                 if result['archive_limit_exceeded']:
                     print(f"  {ui('AVVISO:', 'warning')} supera max_delete={limit}; una run si fermerebbe prima dei trasferimenti.")
                 if args.command == 'run':
+                    archived = result['archive_deleted_completed_paths']
+                    if archived is None:
+                        print(ui('Archiviazioni per assenza locale: completamento non verificabile.', 'warning'))
+                    else:
+                        print(f'Archiviati per assenza dalla selezione locale: '
+                              f'{len(archived)}/{result["archive_deleted"]}.')
                     if result['archive_policy']:
                         print(f"Archiviati per policy: {len(result['policy_archived'])}/{result['archive_policy']}.")
                     if result.get('transferred_files') is None:
@@ -3459,70 +3530,121 @@ def verify_report(source: str, destination: str, names: list[str],
         }
 
 
+def save_local_report(state: Path, filename: str, data: dict) -> None:
+    """Replace the private local report without exposing a partial JSON file."""
+    data['updated_at'] = datetime.now(timezone.utc).isoformat()
+    fd, temporary = tempfile.mkstemp(prefix='report-', dir=state)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(localized_json(data), stream, ensure_ascii=False, indent=2)
+        os.replace(temporary, state / filename)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def display_safe_path(original: str) -> str:
+    def escape(match):
+        return {'\r': r'\r', '\n': r'\n', '\t': r'\t'}.get(
+            match.group(), '\\x%02x' % ord(match.group()))
+    return re.sub(r'[\x00-\x1f\x7f]', escape, original)
+
+
+def verify_display_path(name: str, kind: str) -> str:
+    if kind == 'macos-icons' and name.endswith(ICON_SIDECAR):
+        original = str(Path('/' + name[:-len(ICON_SIDECAR)]) / FINDER_ICON)
+    else:
+        original = '/' + (name[:-len('.rclonelink')] if name.endswith('.rclonelink') else name)
+    return display_safe_path(original)
+
+
 def verify_operation(args, config: Path, home: Path) -> int:
     if args.size_only and args.download:
         raise ConfigError('--size-only e --download non possono essere usati insieme.')
     targets, _ = load_targets(config, args.target, require_enabled=False)
     policy = Policy(config, home)
     with operation_lock(policy.state_dir):
-        with operation_activity('Scansione locale', show_count=True) as pulse:
-            scan = scan_policy(policy, pulse)
-        if scan.errors:
-            raise ConfigError('La selezione locale contiene errori: eseguire macbackup check.')
         results = []
-        for target, areas in targets.items():
-            for area, root in areas.items():
-                if args.area != 'all' and args.area != area:
-                    continue
-                local = sorted(selected_names(scan, area))
-                try:
-                    with operation_activity(f'Verifica {target}/{area}/files', len(local)) as pulse:
-                        checked = verify_report('/', remote_join(root, 'current'), local,
-                                                policy.state_dir, area == 'private', args.download,
-                                                args.size_only, pulse)
-                    results.append({'target': target, 'area': area, 'kind': 'files',
-                                    'method': ('size-only' if args.size_only else 'download' if args.download else
-                                               'cryptcheck' if area == 'private' else 'check'),
-                                    **checked})
-                except (ConfigError, TransportError, OSError) as exc:
-                    results.append({'target': target, 'area': area, 'kind': 'files',
-                                    'selected': len(local), 'error': str(exc)})
-                icons = [entry for entry in scan.entries
-                         if entry.kind == 'finder-icon' and entry.decision.action == area]
-                if icons:
-                    try:
-                        with tempfile.TemporaryDirectory(prefix='verify-icons-', dir=policy.state_dir) as directory:
-                            source = Path(directory)
-                            names = []
-                            for entry in icons:
-                                relative = str(Path(entry.path).parent).lstrip('/') + ICON_SIDECAR
-                                path = source / relative
-                                path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                                with path.open('x') as stream:
-                                    os.chmod(path, 0o600)
-                                    json.dump(icon_snapshot(entry), stream, sort_keys=True,
-                                              ensure_ascii=False, indent=2)
-                                names.append(relative)
-                            with operation_activity(f'Verifica {target}/{area}/macos-icons', len(names)) as pulse:
-                                checked = verify_report(str(source),
-                                    remote_join(remote_join(root, 'macos-icons'), 'current'),
-                                    sorted(names), policy.state_dir, area == 'private', args.download,
-                                    args.size_only, pulse)
-                            results.append({'target': target, 'area': area, 'kind': 'macos-icons',
-                                            'method': ('size-only' if args.size_only else 'download' if args.download else
-                                                       'cryptcheck' if area == 'private' else 'check'),
-                                            **checked})
-                    except (ConfigError, TransportError, OSError) as exc:
-                        results.append({'target': target, 'area': area, 'kind': 'macos-icons',
-                                        'selected': len(icons), 'error': str(exc)})
-        ok = all(not item.get('error') and not item.get('different')
-                 and not item.get('missing') and not item.get('errors') for item in results)
-        data = {'operation': 'verify', 'ok': ok, 'target': args.target, 'area': args.area,
-                'download': args.download, 'size_only': args.size_only,
-                'scope': 'selected-local-versus-remote-current',
-                'results': results,
+        data = {'operation': 'verify', 'ok': False, 'complete': False, 'interrupted': False,
+                'target': args.target, 'area': args.area, 'download': args.download,
+                'size_only': args.size_only, 'scope': 'selected-local-versus-remote-current',
+                'started_at': datetime.now(timezone.utc).isoformat(), 'results': results,
                 'note': 'Confronto con le sorgenti locali attuali; una differenza non prova corruzione. '
                         'Lo storico e le copie già escluse non sono coperti.'}
+        active_phase = 'local-scan'
+        data['active_phase'] = active_phase
+        save_local_report(policy.state_dir, 'last-verify.json', data)
+        try:
+            with operation_activity('Scansione locale', show_count=True) as pulse:
+                scan = scan_policy(policy, pulse)
+            if scan.errors:
+                raise ConfigError('La selezione locale contiene errori: eseguire macbackup check.')
+            for target, areas in targets.items():
+                for area, root in areas.items():
+                    if args.area != 'all' and args.area != area:
+                        continue
+                    local = sorted(selected_names(scan, area))
+                    method = ('size-only' if args.size_only else 'download' if args.download else
+                              'cryptcheck' if area == 'private' else 'check')
+                    active_phase = f'{target}/{area}/files'
+                    data['active_phase'] = active_phase
+                    save_local_report(policy.state_dir, 'last-verify.json', data)
+                    try:
+                        with operation_activity(f'Verifica {target}/{area}/files', len(local)) as pulse:
+                            checked = verify_report('/', remote_join(root, 'current'), local,
+                                                    policy.state_dir, area == 'private', args.download,
+                                                    args.size_only, pulse)
+                        results.append({'target': target, 'area': area, 'kind': 'files',
+                                        'method': method, **checked})
+                    except (ConfigError, TransportError, OSError) as exc:
+                        results.append({'target': target, 'area': area, 'kind': 'files',
+                                        'selected': len(local), 'error': str(exc)})
+                    save_local_report(policy.state_dir, 'last-verify.json', data)
+                    icons = [entry for entry in scan.entries
+                             if entry.kind == 'finder-icon' and entry.decision.action == area]
+                    if icons:
+                        active_phase = f'{target}/{area}/macos-icons'
+                        data['active_phase'] = active_phase
+                        save_local_report(policy.state_dir, 'last-verify.json', data)
+                        try:
+                            with tempfile.TemporaryDirectory(prefix='verify-icons-', dir=policy.state_dir) as directory:
+                                source = Path(directory)
+                                names = []
+                                for entry in icons:
+                                    relative = str(Path(entry.path).parent).lstrip('/') + ICON_SIDECAR
+                                    path = source / relative
+                                    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                                    with path.open('x') as stream:
+                                        os.chmod(path, 0o600)
+                                        json.dump(icon_snapshot(entry), stream, sort_keys=True,
+                                                  ensure_ascii=False, indent=2)
+                                    names.append(relative)
+                                with operation_activity(f'Verifica {target}/{area}/macos-icons', len(names)) as pulse:
+                                    checked = verify_report(str(source),
+                                        remote_join(remote_join(root, 'macos-icons'), 'current'),
+                                        sorted(names), policy.state_dir, area == 'private', args.download,
+                                        args.size_only, pulse)
+                                results.append({'target': target, 'area': area, 'kind': 'macos-icons',
+                                                'method': method, **checked})
+                        except (ConfigError, TransportError, OSError) as exc:
+                            results.append({'target': target, 'area': area, 'kind': 'macos-icons',
+                                            'selected': len(icons), 'error': str(exc)})
+                        save_local_report(policy.state_dir, 'last-verify.json', data)
+        except KeyboardInterrupt:
+            data.update(interrupted=True, active_phase=active_phase,
+                        note='Verifica interrotta; solo le fasi concluse sono riportate.')
+            save_local_report(policy.state_dir, 'last-verify.json', data)
+            raise
+        except (ConfigError, TransportError, OSError) as exc:
+            data.update(error=str(exc), active_phase=active_phase)
+            save_local_report(policy.state_dir, 'last-verify.json', data)
+            raise
+        ok = all(not item.get('error') and not item.get('different')
+                 and not item.get('missing') and not item.get('errors') for item in results)
+        data.update(ok=ok, complete=True, active_phase=None,
+                    finished_at=datetime.now(timezone.utc).isoformat())
+        save_local_report(policy.state_dir, 'last-verify.json', data)
         if args.json:
             print(json.dumps(data, ensure_ascii=False, indent=2))
         else:
@@ -3534,9 +3656,17 @@ def verify_operation(args, config: Path, home: Path) -> int:
                       f"diversi {len(item.get('different', []))}; "
                       f"mancanti {len(item.get('missing', []))}; "
                       f"errori {len(item.get('errors', []))}.")
+                for key, label in (('different', 'Diverso'), ('missing', 'Mancante'),
+                                   ('errors', 'Errore di lettura')):
+                    paths = item.get(key, [])
+                    for name in paths[:20]:
+                        print(f"  {label}: {ui(verify_display_path(name, item['kind']), 'muted')}")
+                    if len(paths) > 20:
+                        print(ui(f"  Altri {len(paths) - 20} percorsi nel rapporto salvato: macbackup status --verify", 'subtle'))
                 if item.get('error'):
                     print(ui('ERRORE:', 'error') + ' ' + item['error'])
             print(ui(data['note'], 'subtle'))
+            print(ui('Rapporto completo: macbackup status --verify', 'subtle'))
         return 0 if ok else 1
 
 
@@ -3597,8 +3727,9 @@ def make_parser() -> argparse.ArgumentParser:
                        help='aree da mostrare (predefinita: all)')
     mount.add_argument('--mountpoint', metavar='ABS_PATH',
                        help='cartella base; predefinita: ~/Desktop')
-    status = commands.add_parser("status", help="mostra l'esito memorizzato dell'ultima run")
+    status = commands.add_parser("status", help="mostra l'esito memorizzato dell'ultima run o verifica")
     status.add_argument("--json", action="store_true", help="compatibilità: status stampa già JSON")
+    status.add_argument("--verify", action="store_true", help="mostra il rapporto dell'ultima verifica")
     icon = commands.add_parser('restore-icon', help='ripristina una sola icona Finder da un file di metadati locale')
     icon.add_argument('--file', required=True, metavar='PATH', help='snapshot icon.json scaricato dal backup')
     icon.add_argument('--folder', required=True, metavar='PATH', help='cartella locale esistente su cui applicare l\'icona')
@@ -3673,11 +3804,14 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(files))
             return 0
         if args.command == "status":
-            file = home / ".local/state/macbackup/last-run.json"
+            file = home / (".local/state/macbackup/last-verify.json" if args.verify
+                           else ".local/state/macbackup/last-run.json")
             if file.is_symlink():
                 raise ConfigError("Il file di stato non può essere un collegamento.")
             if not file.exists():
-                data = {"ok": None, "note": localized("Nessuna run registrata. Nessun backup certificato.")}
+                message = ('Nessuna verifica registrata.' if args.verify else
+                           'Nessuna run registrata. Nessun backup certificato.')
+                data = {"ok": None, "note": localized(message)}
             else:
                 data = json.loads(file.read_text())
             # A saved report is a historical record: keep its original language.

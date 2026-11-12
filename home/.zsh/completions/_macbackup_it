@@ -109,7 +109,8 @@ case "$state" in
       status)
         _arguments \
           '(- *)'{-h,--help}'[mostra aiuto]' \
-          '--json[status stampa già JSON]'
+          '--json[status stampa già JSON]' \
+          '--verify[mostra il rapporto dell’ultima verifica]'
         ;;
       restore-icon)
         _arguments \

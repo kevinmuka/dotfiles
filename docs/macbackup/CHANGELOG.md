@@ -6,6 +6,17 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-12 — confirm completed absence archives (0.14.5)
+
+- Run status and `run --json` now separate planned absence archives (`archive_deleted_paths`) from completed ones (`archive_deleted_completed_paths`). A successful sync marks all planned absence archives complete based on its result. An interrupted or failed sync reads only that run's history and intersects it with the plan; if the read fails, the completed list is `null` rather than an ungrounded zero. The readable summary shows the confirmed count or an unknown result. Synthetic local and crypt remote tests cover partial, successful, and unreadable-history cases; the live provider was not checked. Older reports remain unchanged.
+
+## 2026-11-12 — retain run and verification detail (0.14.4)
+
+- `verify` now shows differing, missing, and read-error paths in readable output, limited to 20 per category and phase. The full lists remain available in JSON and in the new local `last-verify.json` report through `macbackup status --verify`. Original Mac paths are shown for symlinks and Finder icons.
+- Verification saves a private, atomically replaced report at the start and after each phase. An interrupted report marks the active phase incomplete and includes only finished phase results; it never certifies the interrupted phase. The next verification replaces the report.
+- `run` records `archive_deleted_paths` alongside the planned count. Its `last-run.json` is now written at the start, after planning, and after each phase. Incomplete attempts are marked explicitly. Planned archive paths in a partial phase do not prove that every move completed.
+- Both reports are local and owner-only; neither feature changes cloud copies. Synthetic local and crypt remotes cover successful and interrupted cases; no live provider verification is claimed.
+
 ## 2026-11-09 — inspect planned archives after local selection changes (0.14.3)
 
 - Remote `preview` now lists every current copy that remains classified in its area but is absent from the local selection, in readable output and the additive JSON field `archive_deleted_paths`. This is an observation about selection, not proof of physical deletion. Policy archives remain a separate list.

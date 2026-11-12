@@ -13,7 +13,7 @@ commands=(
   'preview:preview the backup'
   'run:run the backup'
   'mount:mount backup read-only'
-  "status:show the latest run"
+  "status:show the latest run or verification"
   'restore-icon:restore a Finder icon'
   'forget:remove copies with a checked plan'
   'versions:list current and history versions'
@@ -109,7 +109,8 @@ case "$state" in
       status)
         _arguments \
           '(- *)'{-h,--help}'[show help]' \
-          '--json[status already prints JSON]'
+          '--json[status already prints JSON]' \
+          '--verify[show the latest verification report]'
         ;;
       restore-icon)
         _arguments \
