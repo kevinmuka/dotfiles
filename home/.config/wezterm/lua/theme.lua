@@ -208,7 +208,7 @@ end
 
 function M.apply_tab_theme_mode(window, tab, mode)
    if not window or not tab then
-      return false
+      return nil
    end
 
    local ok, overrides = pcall(function()
@@ -216,7 +216,7 @@ function M.apply_tab_theme_mode(window, tab, mode)
    end)
 
    if not ok then
-      return false
+      return nil
    end
 
    if type(overrides) ~= "table" then
@@ -240,6 +240,10 @@ function M.apply_tab_theme_mode(window, tab, mode)
 end
 
 function M.apply_runtime_theme_mode(window, pane, mode, source)
+   -- A new tab starts with the window palette before its shell publishes a
+   -- pane-specific mode. Keep that base palette at the current global default.
+   M.apply_window_theme_mode(window, M.read_default_theme_mode())
+
    mode = M.normalize_mode(mode)
    source = source or "pane"
 
@@ -248,8 +252,11 @@ function M.apply_runtime_theme_mode(window, pane, mode, source)
    end
 
    local tab = M.get_target_tab(window, pane)
-   if tab and M.apply_tab_theme_mode(window, tab, mode) then
-      return true
+   if tab then
+      local changed = M.apply_tab_theme_mode(window, tab, mode)
+      if changed ~= nil then
+         return changed
+      end
    end
 
    return M.apply_window_theme_mode(window, mode)
