@@ -6,6 +6,11 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-13 — protect custom rclone configuration and align mount startup (0.14.6)
+
+- When `RCLONE_CONFIG` is set, the selector protects that file and its physical target from plain backup. Relative values are resolved from the command's working directory. An overlapping private inclusion remains valid; a plain selection is an error before file transfer. Focused synthetic tests cover absolute and relative paths, a symlink alias, private routing, and local `check`.
+- `mount` now resolves rclone from `PATH` and passes `--ask-password=false`, like the other rclone calls. A missing executable or unavailable configuration password fails without an interactive prompt. Mount tests cover the launched command and missing-executable case. No live provider mount was performed for this change.
+
 ## 2026-11-12 — confirm completed absence archives (0.14.5)
 
 - Run status and `run --json` now separate planned absence archives (`archive_deleted_paths`) from completed ones (`archive_deleted_completed_paths`). A successful sync marks all planned absence archives complete based on its result. An interrupted or failed sync reads only that run's history and intersects it with the plan; if the read fails, the completed list is `null` rather than an ungrounded zero. The readable summary shows the confirmed count or an unknown result. Synthetic local and crypt remote tests cover partial, successful, and unreadable-history cases; the live provider was not checked. Older reports remain unchanged.

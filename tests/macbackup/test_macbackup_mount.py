@@ -147,14 +147,16 @@ class MountTests(unittest.TestCase):
         def start(command, **_kwargs):
             nonlocal mounted
             mounted = True
-            self.assertEqual(command[:3], ['rclone', 'nfsmount', 'localplain:MacBackup/plain'])
+            self.assertEqual(command[:4], ['/synthetic/bin/rclone', '--ask-password=false',
+                                           'nfsmount', 'localplain:MacBackup/plain'])
             self.assertIn('--read-only', command)
             self.assertEqual(command[command.index('--addr') + 1], '127.0.0.1:0')
             return process
         args = argparse.Namespace(target='google', area='plain', mountpoint=None)
         targets = ({'google': {'plain': 'localplain:MacBackup/plain', 'private': 'localcrypt:'}}, 25)
         output = io.StringIO()
-        with redirect_stdout(output), patch('subprocess.Popen', side_effect=start), \
+        with redirect_stdout(output), patch('shutil.which', return_value='/synthetic/bin/rclone'), \
+             patch('subprocess.Popen', side_effect=start), \
              patch('os.path.ismount', side_effect=lambda _path: mounted), \
              patch('time.sleep', side_effect=KeyboardInterrupt), \
              patch.dict(M['mount_operation'].__globals__, {'load_targets': lambda *_args: targets}):
@@ -167,6 +169,13 @@ class MountTests(unittest.TestCase):
         decision = M['Policy'](self.config, self.home).decide(point / 'current/file.txt')
         self.assertEqual(decision.action, 'skip')
         self.assertEqual(decision.rule, str(point))
+
+    def test_mount_reports_missing_rclone_before_creating_mountpoint(self):
+        args = argparse.Namespace(target='google', area='plain', mountpoint=None)
+        with patch('shutil.which', return_value=None):
+            with self.assertRaisesRegex(M['ConfigError'], 'rclone'):
+                M['mount_operation'](args, self.config, self.home)
+        self.assertFalse((self.home / 'Desktop/google-plain').exists())
 
     def test_mount_keeps_preexisting_empty_mountpoint(self):
         point = self.home / 'Desktop/google-plain'
@@ -255,9 +264,10 @@ class MountTests(unittest.TestCase):
         def start(command, **kwargs):
             nonlocal mounted
             mounted = True
-            self.assertEqual(command[:2], ['rclone', 'nfsmount'])
-            self.assertTrue(command[2].startswith('macbackup_mount_'))
-            self.assertEqual(command[3], str(self.home / 'Desktop/google'))
+            self.assertEqual(command[:3], ['/synthetic/bin/rclone',
+                                           '--ask-password=false', 'nfsmount'])
+            self.assertTrue(command[3].startswith('macbackup_mount_'))
+            self.assertEqual(command[4], str(self.home / 'Desktop/google'))
             self.assertIn('--read-only', command)
             env = kwargs['env']
             self.assertIn('union', env.values())
@@ -270,7 +280,8 @@ class MountTests(unittest.TestCase):
         process.terminate.side_effect = stop
         args = argparse.Namespace(target='google', area='all', mountpoint=None)
         targets = ({'google': {'plain': 'localplain:MacBackup/plain', 'private': 'localcrypt:'}}, 25)
-        with patch('subprocess.Popen', side_effect=start), \
+        with patch('shutil.which', return_value='/synthetic/bin/rclone'), \
+             patch('subprocess.Popen', side_effect=start), \
              patch('os.path.ismount', side_effect=lambda _path: mounted), \
              patch('time.sleep', side_effect=KeyboardInterrupt), \
              patch.dict(M['mount_operation'].__globals__,

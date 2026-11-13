@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.5"
+VERSION = "0.14.6"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -999,13 +999,16 @@ class Policy:
                                          'pattern parzialmente sovrapposti.')
             self.patterns.append(candidate)
         self.gitignore = GitIgnoreMatcher() if use_gitignore else None
-        self.credential_roots = (
+        credential_roots = [
             home / ".config/rclone",
             home / "Library/Preferences/rclone",
-        )
+        ]
+        custom_config = os.environ.get('RCLONE_CONFIG')
+        if custom_config:
+            credential_roots.append(Path(os.path.abspath(custom_config)))
         self.credential_roots = tuple({
-            *self.credential_roots,
-            *(Path(os.path.realpath(root)) for root in self.credential_roots),
+            *credential_roots,
+            *(Path(os.path.realpath(root)) for root in credential_roots),
         })
 
     def _rules(self, filename: str) -> list[Rule]:
@@ -2253,6 +2256,9 @@ def mount_operation(args, config: Path, home: Path) -> int:
 def _mount_operation(args, config: Path, home: Path, input_fd: int | None) -> int:
     if sys.platform != 'darwin':
         raise ConfigError('Il montaggio macbackup richiede macOS.')
+    executable = shutil.which('rclone')
+    if executable is None:
+        raise ConfigError('rclone non è disponibile nel PATH.')
     targets, _ = load_targets(config, args.target)
     policy = Policy(config, home)
     base = absolute_path(args.mountpoint) if args.mountpoint else home / 'Desktop'
@@ -2301,7 +2307,7 @@ def _mount_operation(args, config: Path, home: Path, input_fd: int | None) -> in
             fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'w') as output:
                 process = subprocess.Popen(
-                    ['rclone', 'nfsmount', remote, str(point), '--read-only',
+                    [executable, '--ask-password=false', 'nfsmount', remote, str(point), '--read-only',
                      '--vfs-cache-mode', 'off', '--addr', '127.0.0.1:0'],
                     stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                     start_new_session=True, env=transport_env() | extra_env)

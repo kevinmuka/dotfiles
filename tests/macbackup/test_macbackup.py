@@ -81,6 +81,33 @@ class LocalSelectorTests(unittest.TestCase):
         for path in (self.env_local, self.nested):
             self.assertEqual(self.action(path), "skip")
 
+    def test_custom_rclone_config_cannot_be_backed_up_in_plain(self):
+        custom = self.write(self.project / 'credentials/rclone.conf')
+        with patch.dict(os.environ, {'RCLONE_CONFIG': str(custom)}):
+            self.assertEqual(self.policy().decide(custom).action, 'error')
+
+    def test_relative_custom_rclone_config_and_symlink_are_protected(self):
+        custom = self.write(self.project / 'credentials/rclone.conf')
+        alias = self.project / 'config-link'
+        alias.symlink_to(custom)
+        relative = os.path.relpath(custom, Path.cwd())
+        with patch.dict(os.environ, {'RCLONE_CONFIG': relative}):
+            policy = self.policy()
+            self.assertEqual(policy.decide(custom).action, 'error')
+            self.assertEqual(policy.decide(alias).action, 'error')
+
+    def test_custom_rclone_config_can_be_selected_privately(self):
+        custom = self.write(self.project / 'credentials/rclone.conf')
+        self.set_rules(plain=[self.project], private=[custom])
+        with patch.dict(os.environ, {'RCLONE_CONFIG': str(custom)}):
+            self.assertEqual(self.policy().decide(custom).action, 'private')
+
+    def test_check_rejects_custom_rclone_config_inside_plain_source(self):
+        custom = self.write(self.project / 'credentials/rclone.conf')
+        result = self.cli('check', '--json', extra_env={'RCLONE_CONFIG': str(custom)})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('rclone', result.stdout + result.stderr)
+
     def test_exact_private_entry_works_without_parent(self):
         self.set_rules(private=[self.env])
         self.assertEqual(self.action(self.env), "private")

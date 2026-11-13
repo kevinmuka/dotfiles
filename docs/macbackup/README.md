@@ -1,6 +1,6 @@
 # macbackup: user manual
 
-**Documented macbackup version: `0.14.5`.** Check the installed version with `macbackup --version`.
+**Documented macbackup version: `0.14.6`.** Check the installed version with `macbackup --version`.
 
 `macbackup` selects files and directories on a Mac, copies them through rclone, and separates readable files (`plain`) from files encrypted with rclone crypt (`private`). The remote layout mirrors original paths and keeps previous copies in `history`. It is neither a bootable Mac backup nor a consistent snapshot of running applications.
 
@@ -200,7 +200,7 @@ These **ten patterns are examples**; `init` creates only the four `.env` file an
 
 ### 3.4 Credentials and symlinks
 
-macbackup cannot automatically recognize every secret in Desktop, Documents, repositories, or `.config`. Review selection before the first upload. The selector protects the standard rclone configuration and macbackup state locations, even through links. A custom rclone configuration location is not discovered automatically: add its absolute path to `private-paths.txt` if it must be backed up, then inspect its classification with `explain`.
+macbackup cannot automatically recognize every secret in Desktop, Documents, repositories, or `.config`. Review selection before the first upload. The selector protects the standard rclone configuration and macbackup state locations, even through links. When `RCLONE_CONFIG` is set, macbackup also protects that configuration file, including a relative path resolved from the command's working directory and its symlink target. If the file would be selected in plain, `check` reports an error and `run` stops before transferring files. Include the file in `private-paths.txt` or exclude it if it falls under a selected source; inspect its classification with `explain`. Other custom credential locations are not discovered automatically.
 
 Symlinks are preserved without following them. With rclone `--links`, they appear in the cloud as files ending in `.rclonelink`; their contents record the target path, not target contents. Selecting `.config/` therefore does not back up a repository reached only through a symlink. Include the real directory path separately when its contents are needed.
 
@@ -367,6 +367,8 @@ macbackup mount --target google --area all      # merged current, separate histo
 macbackup mount --target google --area plain    # google-plain volume
 macbackup mount --target google --area private  # google-private volume
 ```
+
+`mount` resolves rclone from `PATH` and never prompts for a password protecting rclone's configuration. If that configuration needs a password, make it available through your rclone setup before mounting; otherwise the command fails rather than waiting for terminal input.
 
 `--target` chooses the service; `--area` chooses visible areas. There is no `--all` flag: use `--area all`, the default. On the Desktop it creates one `google` volume. Its `current/` merges plain and private files into their original path tree, so an encrypted `.git` appears alongside the project's plain files. `history/plain/` and `history/private/` remain separate because earlier versions may exist in both areas. Finder icon snapshots appear under `icons/plain/` and `icons/private/`. This is a read-only view; remote paths, classification, and encryption do not change. rclone `union` and `combine` remotes are created only in the mount process. `--area plain` or `private` instead creates `google-plain` or `google-private`. `--mountpoint ABS_PATH` changes the **base folder**, retaining these volume names beneath it. `--target proton` works when configured and enabled; `--target all` requires both services enabled and creates a volume for each.
 

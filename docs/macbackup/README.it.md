@@ -1,6 +1,6 @@
 # macbackup: manuale d'uso
 
-**Versione di macbackup documentata: `0.14.5`.** Verifica la versione installata con `macbackup --version`.
+**Versione di macbackup documentata: `0.14.6`.** Verifica la versione installata con `macbackup --version`.
 
 Questa è la traduzione italiana del [manuale principale in inglese](README.md). In caso di differenze, fa fede la versione inglese, da aggiornare per prima quando cambia il programma.
 
@@ -216,7 +216,7 @@ Per conoscere la configurazione effettiva aprire i cinque file di `~/.config/mac
 
 ### 3.4 Credenziali e collegamenti simbolici
 
-Non si può promettere di riconoscere automaticamente ogni segreto dentro Desktop, Documents, repository o `.config`. Prima del primo caricamento occorre rivedere le selezioni. Il selettore protegge la posizione standard della configurazione rclone e lo stato standard di macbackup, anche quando sono raggiunti tramite collegamenti. Se rclone usa una posizione personalizzata, il selettore non la rileva automaticamente: aggiungerla esplicitamente a `private-paths.txt` quando deve essere salvata e controllarne la classificazione con `explain`.
+Non si può promettere di riconoscere automaticamente ogni segreto dentro Desktop, Documents, repository o `.config`. Prima del primo caricamento occorre rivedere le selezioni. Il selettore protegge la posizione standard della configurazione rclone e lo stato standard di macbackup, anche quando sono raggiunti tramite collegamenti. Quando `RCLONE_CONFIG` è impostata, protegge anche quel file, compreso un percorso relativo risolto dalla directory di lavoro del comando e la destinazione di un symlink. Se il file risulta selezionato in plain, `check` segnala un errore e `run` si ferma prima di trasferire file. Includerlo in `private-paths.txt` oppure escluderlo se ricade sotto una sorgente selezionata; verificarne la classificazione con `explain`. Altre posizioni personalizzate delle credenziali non vengono individuate automaticamente.
 
 I link simbolici non devono essere seguiti automaticamente. Possono essere conservati mediante `--links`, che rclone rappresenta sul cloud con file aventi suffisso `.rclonelink`. Il contenuto del link è il percorso della destinazione, non il contenuto della destinazione.
 
@@ -409,6 +409,8 @@ macbackup mount --target google --area all      # current/ unificato, storici se
 macbackup mount --target google --area plain    # solo google-plain
 macbackup mount --target google --area private  # solo google-private
 ```
+
+`mount` trova rclone nel `PATH` e non richiede interattivamente la password che protegge la configurazione rclone. Se la configurazione richiede una password, renderla disponibile tramite la propria configurazione rclone prima di montare; altrimenti il comando termina con un errore invece di restare in attesa di input.
 
 Il comando usa i percorsi `plain` e `private` di `settings.toml`. La sintassi è `--area all`, non `--all`: `--area` sceglie quali aree mostrare, mentre `--target` sceglie il servizio. Con `--area all` (il valore predefinito) crea direttamente sul Desktop un solo volume `google`. `current/` mostra i file normali e quelli privati nello stesso albero dei percorsi originali; una `.git` privata appare così accanto ai file normali del suo progetto. `history/plain/` e `history/private/` rimangono separati, perché una versione precedente potrebbe esistere in entrambe le aree. Gli snapshot delle icone Finder restano consultabili sotto `icons/plain/` e `icons/private/`. Questa è solo una vista in lettura: i percorsi cloud, la classificazione e la cifratura non cambiano. Rclone crea la vista con `union` per `current` e `combine` per gli altri rami, usando remotes temporanei solo nel processo di montaggio. Con `--area plain` o `--area private` monta invece il solo volume `google-plain` o `google-private`. `--mountpoint /percorso/assoluto` cambia la cartella **base** e conserva questi nomi al suo interno. È previsto anche `--target proton` quando quel servizio sarà configurato e abilitato; `--target all` richiede entrambi i servizi abilitati e monta un volume per servizio.
 
