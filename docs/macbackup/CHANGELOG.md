@@ -6,6 +6,18 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-13 — validate merged mount inventories (0.14.8)
+
+- The merged mount now rejects duplicate or invalid paths and entries with missing or invalid file/directory types within either current area, matching the remote check's inventory validation. Synthetic tests cover all three cases. No live cloud mount was performed for this change.
+
+## 2026-11-13 — coordinate mount startup and safe cross-area transitions (0.14.7)
+
+- `mount` now holds the local operation lock during target loading, merged-current inventories, and volume startup. It fails before inventory if another locked macbackup operation is active. The lock is released once the volume is mounted, so keeping the read-only volume open does not block later macbackup commands. Direct rclone or cloud-app changes are not coordinated by this local lock.
+- Synthetic mount tests cover lock contention during inventory, immediate failure while another operation holds the lock, and release after startup. No live cloud mount was performed for this change.
+- A plain/private reclassification now archives the old `current` copy before uploading the replacement into the other area. If the upload is interrupted, the former copy is retained in its original area's `history` and the new area can remain temporarily empty. The run does not create two current copies for one logical path. This is ordered recovery, not a cross-area transaction.
+- `check --remote` and preview report a pre-existing current conflict as repairable when the policy identifies a file copy to archive first; unsafe conflicts stop both commands and run. Preview, run JSON, and saved run status include the additive `conflicts` list. Run status records confirmed early policy archives in precreated per-area rows even if the destination upload has not started, and flags an interrupted archive move as uncertain. The merged mount still rejects every existing conflict.
+- Synthetic crypt and plain round trips cover a private-to-plain interruption, successful reclassification, repair of an existing duplicate, unsafe file/directory conflict, and refusal to upload when the preliminary archive is interrupted. `max_delete` planning remains ahead of cloud writes. No live provider run was performed for this change.
+
 ## 2026-11-13 — protect custom rclone configuration and align mount startup (0.14.6)
 
 - When `RCLONE_CONFIG` is set, the selector protects that file and its physical target from plain backup. Relative values are resolved from the command's working directory. An overlapping private inclusion remains valid; a plain selection is an error before file transfer. Focused synthetic tests cover absolute and relative paths, a symlink alias, private routing, and local `check`.

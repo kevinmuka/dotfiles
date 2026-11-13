@@ -503,16 +503,23 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(structured.returncode, 0, structured.stdout + structured.stderr)
         self.assertEqual(json.loads(structured.stdout)['summary']['plain'], 2)
 
-    def test_remote_check_rejects_same_file_in_plain_and_private(self):
+    def test_remote_check_reports_recoverable_conflict_and_run_archives_wrong_area(self):
         self.run_backup()
         private = 'localcrypt:current/' + str(self.normal).lstrip('/')
         subprocess.run(['rclone', 'copyto', str(self.normal), private],
                        env=self.environment, check=True, capture_output=True)
         result = self.cli('check', '--remote', '--target', 'google')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn(str(self.normal), result.stderr)
-        self.assertIn('conflicting between plain and private', result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(str(self.normal), result.stdout)
+        self.assertIn('repairable conflict', result.stdout)
+        preview = self.cli('preview', '--target', 'google', '--json')
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        self.assertEqual(json.loads(preview.stdout)['conflicts'][0]['path'], str(self.normal))
+        report = self.run_backup()
+        self.assertEqual(report['conflicts'][0]['archive_from'], ['private'])
         self.assertTrue(self.remote_path(self.normal).exists())
+        self.assertNotEqual(subprocess.run(['rclone', 'cat', private], env=self.environment,
+                                           capture_output=True).returncode, 0)
 
     def test_remote_check_rejects_file_at_private_directory_path(self):
         self.run_backup()
@@ -522,6 +529,11 @@ class TransportTests(unittest.TestCase):
         result = self.cli('check', '--remote', '--target', 'google')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(str(self.normal), result.stderr)
+        preview = self.cli('preview', '--target', 'google')
+        self.assertNotEqual(preview.returncode, 0)
+        attempted = self.cli('run', '--target', 'google')
+        self.assertNotEqual(attempted.returncode, 0)
+        self.assertTrue(self.remote_path(self.normal).exists())
 
     def test_local_check_uses_decimal_units_in_human_output(self):
         with self.normal.open('wb') as stream:
@@ -848,6 +860,80 @@ except module['TransferInterrupted'] as exc:
         old = subprocess.run(['rclone', 'lsf', 'localcrypt:history', '--recursive', '--files-only'],
                              env=self.environment, capture_output=True, text=True, check=True)
         self.assertTrue(any(name.endswith('/.git/objects/ab/cdef') for name in old.stdout.splitlines()))
+
+    def test_private_to_plain_archives_old_current_before_new_upload(self):
+        git_dir = self.source / '.git'
+        object_file = git_dir / 'objects/ab/cdef'
+        object_file.parent.mkdir(parents=True)
+        object_file.write_text('synthetic git object')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nprivate_directory_names = [".git"]\n'))
+        (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
+        self.run_backup()
+        (self.config / 'plain-paths.txt').write_text(
+            str(self.source) + '/\n' + str(git_dir) + '/\n')
+        logical = str(object_file).lstrip('/')
+        original_sync = M['perform_sync']
+
+        def interrupt_before_new_upload(plan, *args, **kwargs):
+            if plan['area'] == 'plain' and plan.get('kind', 'files') == 'files':
+                old = subprocess.run(['rclone', 'cat', 'localcrypt:current/' + logical],
+                                     env=self.environment, capture_output=True)
+                self.assertNotEqual(old.returncode, 0, 'old private copy is still in current')
+                raise KeyboardInterrupt
+            return original_sync(plan, *args, **kwargs)
+
+        args = argparse.Namespace(command='run', target='google', progress_depth=2, json=True)
+        with patch.dict(os.environ, self.environment, clear=True), \
+             patch.dict(M['transport_operation'].__globals__,
+                        {'perform_sync': interrupt_before_new_upload}), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertNotEqual(M['transport_operation'](
+                args, M['Policy'](self.config, self.home)), 0)
+        report = json.loads((self.home / '.local/state/macbackup/last-run.json').read_text())
+        private = next(row for row in report['results']
+                       if row['area'] == 'private' and row['kind'] == 'files')
+        self.assertEqual(private['policy_archived'][0]['path'], str(object_file))
+        history = subprocess.run(
+            ['rclone', 'cat', f'localcrypt:history/{report["run_id"]}/{logical}'],
+            env=self.environment, capture_output=True, check=True)
+        self.assertEqual(history.stdout, b'synthetic git object')
+        self.assertFalse(self.remote_path(object_file).exists())
+
+    def test_failed_transition_archive_never_starts_new_area_upload(self):
+        git_dir = self.source / '.git'
+        object_file = git_dir / 'objects/ab/cdef'
+        object_file.parent.mkdir(parents=True)
+        object_file.write_text('synthetic git object')
+        settings = self.config / 'settings.toml'
+        settings.write_text(settings.read_text().replace(
+            'max_delete = 25\n', 'max_delete = 25\n[policy]\nprivate_directory_names = [".git"]\n'))
+        (self.config / 'explicit-only-patterns.txt').write_text('.env\n.env.*\n.git\n')
+        self.run_backup()
+        (self.config / 'plain-paths.txt').write_text(
+            str(self.source) + '/\n' + str(git_dir) + '/\n')
+        args = argparse.Namespace(command='run', target='google', progress_depth=2, json=True)
+
+        def refuse_archive(_plan, _run_id, _completed, _activity, _on_complete):
+            raise KeyboardInterrupt
+
+        with patch.dict(os.environ, self.environment, clear=True), \
+             patch.dict(M['transport_operation'].__globals__,
+                        {'archive_policy_copies': refuse_archive,
+                         'perform_sync': lambda *_args, **_kwargs: self.fail('upload started')}), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertNotEqual(M['transport_operation'](
+                args, M['Policy'](self.config, self.home)), 0)
+        report = json.loads((self.home / '.local/state/macbackup/last-run.json').read_text())
+        self.assertTrue(report['interrupted'])
+        self.assertFalse(report['complete'])
+        self.assertTrue(any(row.get('policy_archive_completion_uncertain')
+                            for row in report['results']))
+        old = subprocess.run(['rclone', 'cat', 'localcrypt:current/' + str(object_file).lstrip('/')],
+                             env=self.environment, capture_output=True, check=True)
+        self.assertEqual(old.stdout, b'synthetic git object')
+        self.assertFalse(self.remote_path(object_file).exists())
 
     def test_new_ignored_file_rule_archives_old_cloud_copy(self):
         old = self.source / '.DS_Store'

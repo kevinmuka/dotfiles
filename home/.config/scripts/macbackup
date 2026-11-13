@@ -32,7 +32,7 @@ import tty
 import uuid
 
 
-VERSION = "0.14.6"
+VERSION = "0.14.8"
 
 # The program's stored format and JSON field names are language independent.
 # Keep the original Italian messages as catalog keys so older status files can
@@ -110,6 +110,7 @@ ITALIAN_TO_ENGLISH = {
     'Altri ': 'Other ', ' percorsi nel rapporto salvato:': ' paths in saved report:',
     ' percorsi in macbackup status.': ' paths in macbackup status.',
     'Interrotto dall’utente.': 'Interrupted by user.',
+    "Interrotto dall'utente durante l'archiviazione.": 'Interrupted by user during archiving.',
     "Interrotto dall'utente; i file già caricati restano sul cloud.":
         'Interrupted by user; files already uploaded remain in the cloud.',
     "Interrotto dall'utente; alcune copie possono essere già state rimosse.":
@@ -120,6 +121,17 @@ ITALIAN_TO_ENGLISH = {
     'Piano basato sulla selezione locale e sugli inventari current; differenze di contenuto non verificate. Nessuna modifica cloud.':
         'Plan based on local selection and current inventories; content differences not checked. No cloud changes.',
     'Esiti distinti per destinazione e area.': 'Results separated by target and area.',
+    'Archiviazione prima del trasferimento ': 'Archiving before transfer ',
+    'conflitto riparabile; ': 'repairable conflict; ',
+    'conflitti non risolvibili in modo sicuro: ': 'conflicts without a safe repair: ',
+    ' è presente in plain e private; ': ' exists in both plain and private; ',
+    ' in plain e private; ': ' in plain and private; ',
+    'la copia ': 'the copy ',
+    ' va archiviata prima dei trasferimenti.': ' must be archived before transfers.',
+    'Usare preview per controllare max_delete.': 'Use preview to check max_delete.',
+    'Nessun trasferimento avviato.': 'No transfer started.',
+    'Non avviato: una fase precedente non è stata completata.':
+        'Not started: an earlier phase did not complete.',
     'Trasferimenti: conteggio non disponibile.': 'Transfers: count unavailable.',
     'Archiviati per policy:': 'Archived due to policy:',
     'Spostamenti sul cloud:': 'Server-side moves:',
@@ -2182,7 +2194,15 @@ def mount_current_conflicts(roots: dict[str, str], target: str = '',
             if (not isinstance(path, str) or not path or path.startswith('/')
                     or any(part in ('', '.', '..') for part in path.split('/'))):
                 raise TransportError('Il cloud ha restituito un percorso non valido; montaggio bloccato.')
-            objects[path] = bool(item.get('IsDir'))
+            try:
+                absolute_path('/' + path)
+            except ConfigError as exc:
+                raise TransportError('Il cloud ha restituito un percorso non valido; montaggio bloccato.') from exc
+            if path in objects:
+                raise TransportError('Il cloud contiene percorsi duplicati; montaggio bloccato.')
+            if type(item.get('IsDir')) is not bool:
+                raise TransportError('Il cloud ha restituito un tipo di percorso non valido; montaggio bloccato.')
+            objects[path] = item['IsDir']
         inventories.append(objects)
     plain, private = inventories
     conflicts = current_conflict_paths(plain, private)
@@ -2259,84 +2279,82 @@ def _mount_operation(args, config: Path, home: Path, input_fd: int | None) -> in
     executable = shutil.which('rclone')
     if executable is None:
         raise ConfigError('rclone non è disponibile nel PATH.')
-    targets, _ = load_targets(config, args.target)
-    policy = Policy(config, home)
-    base = absolute_path(args.mountpoint) if args.mountpoint else home / 'Desktop'
-    if args.area == 'all':
-        mounts = []
-        for name, roots in targets.items():
-            mount_current_conflicts(roots, name, input_fd)
-            view, env = mount_merged_env(roots)
-            mounts.append((name, 'all', view, base / name, env))
-    else:
-        mounts = [(name, args.area, roots[args.area], base / f'{name}-{args.area}', {})
-                  for name, roots in targets.items()]
-    for _, _, _, point, _ in mounts:
-        if point not in policy.mount_roots and any(
-                inside(point, rule.path) or inside(rule.path, point) for rule in policy.roots):
-            raise ConfigError(f'{point}: il montaggio si sovrappone a una sorgente del backup.')
-        ancestors_below_home = []
-        for ancestor in (point, *point.parents):
-            if ancestor == home:
-                break
-            ancestors_below_home.append(ancestor)
-        if any(ancestor.is_symlink() for ancestor in ancestors_below_home):
-            raise ConfigError(f'{point}: il percorso del montaggio attraversa un collegamento simbolico.')
-        if os.path.ismount(point):
-            raise ConfigError(f'{point}: già montato.')
-        if point.exists() and (not point.is_dir() or any(point.iterdir())):
-            raise ConfigError(f'{point}: occorre una directory vuota.')
     state = home / '.local/state/macbackup'
-    if state.is_symlink():
-        raise ConfigError('La directory di stato non può essere un collegamento.')
-    state.mkdir(parents=True, mode=0o700, exist_ok=True)
-    os.chmod(state, 0o700)
     processes = []
     created_points = []
     mounted_points = set()
     interrupted = False
     try:
-        for name, area, remote, point, extra_env in mounts:
-            created = not point.exists()
-            if created:
-                point.mkdir(parents=True, mode=0o700)
-            if created:
-                info = point.stat()
-                created_points.append((point, info.st_dev, info.st_ino))
-            log = state / f'mount-{name}-{area}.log'
-            fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-            with os.fdopen(fd, 'w') as output:
-                process = subprocess.Popen(
-                    [executable, '--ask-password=false', 'nfsmount', remote, str(point), '--read-only',
-                     '--vfs-cache-mode', 'off', '--addr', '127.0.0.1:0'],
-                    stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                    start_new_session=True, env=transport_env() | extra_env)
-            processes.append((process, point, log))
-            deadline = time.monotonic() + 30
-            pulse = MountPulse(f'Avvio {name}/{area}')
-            try:
-                while not os.path.ismount(point):
-                    code = process.poll()
-                    if code is not None:
-                        detail = log.read_text(errors='replace')[-1200:]
-                        if code == 0 and 'Unmounted rclone mount' in detail:
-                            pulse.done('smontato')
-                            print(f'{terminal_style("Volume smontato:", "1;32", sys.stdout)} '
-                                  f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
-                            return 0
-                    if code is not None or time.monotonic() >= deadline:
-                        pulse.done('errore')
-                        detail = log.read_text(errors='replace')[-1200:]
-                        raise TransportError(f'Montaggio {name}/{area} fallito: {detail or "nessuna risposta da rclone."}')
-                    pulse.draw()
-                    mount_input_wait(input_fd, 0.2)
-            except KeyboardInterrupt:
-                pulse.done('interrotto')
-                raise
-            pulse.done('completato')
-            mounted_points.add(point)
-            print(f'{terminal_style(f"Montato {name}/{area} in sola lettura:", "1;32", sys.stdout)} '
-                  f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+        with operation_lock(state):
+            targets, _ = load_targets(config, args.target)
+            policy = Policy(config, home)
+            base = absolute_path(args.mountpoint) if args.mountpoint else home / 'Desktop'
+            if args.area == 'all':
+                mounts = []
+                for name, roots in targets.items():
+                    mount_current_conflicts(roots, name, input_fd)
+                    view, env = mount_merged_env(roots)
+                    mounts.append((name, 'all', view, base / name, env))
+            else:
+                mounts = [(name, args.area, roots[args.area], base / f'{name}-{args.area}', {})
+                          for name, roots in targets.items()]
+            for _, _, _, point, _ in mounts:
+                if point not in policy.mount_roots and any(
+                        inside(point, rule.path) or inside(rule.path, point) for rule in policy.roots):
+                    raise ConfigError(f'{point}: il montaggio si sovrappone a una sorgente del backup.')
+                ancestors_below_home = []
+                for ancestor in (point, *point.parents):
+                    if ancestor == home:
+                        break
+                    ancestors_below_home.append(ancestor)
+                if any(ancestor.is_symlink() for ancestor in ancestors_below_home):
+                    raise ConfigError(f'{point}: il percorso del montaggio attraversa un collegamento simbolico.')
+                if os.path.ismount(point):
+                    raise ConfigError(f'{point}: già montato.')
+                if point.exists() and (not point.is_dir() or any(point.iterdir())):
+                    raise ConfigError(f'{point}: occorre una directory vuota.')
+            for name, area, remote, point, extra_env in mounts:
+                created = not point.exists()
+                if created:
+                    point.mkdir(parents=True, mode=0o700)
+                if created:
+                    info = point.stat()
+                    created_points.append((point, info.st_dev, info.st_ino))
+                log = state / f'mount-{name}-{area}.log'
+                fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, 'w') as output:
+                    process = subprocess.Popen(
+                        [executable, '--ask-password=false', 'nfsmount', remote, str(point), '--read-only',
+                         '--vfs-cache-mode', 'off', '--addr', '127.0.0.1:0'],
+                        stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                        start_new_session=True, env=transport_env() | extra_env)
+                processes.append((process, point, log))
+                deadline = time.monotonic() + 30
+                pulse = MountPulse(f'Avvio {name}/{area}')
+                try:
+                    while not os.path.ismount(point):
+                        code = process.poll()
+                        if code is not None:
+                            detail = log.read_text(errors='replace')[-1200:]
+                            if code == 0 and 'Unmounted rclone mount' in detail:
+                                pulse.done('smontato')
+                                print(f'{terminal_style("Volume smontato:", "1;32", sys.stdout)} '
+                                      f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+                                return 0
+                        if code is not None or time.monotonic() >= deadline:
+                            pulse.done('errore')
+                            detail = log.read_text(errors='replace')[-1200:]
+                            raise TransportError(f'Montaggio {name}/{area} fallito: {detail or "nessuna risposta da rclone."}')
+                        pulse.draw()
+                        mount_input_wait(input_fd, 0.2)
+                except KeyboardInterrupt:
+                    pulse.done('interrotto')
+                    raise
+                pulse.done('completato')
+                mounted_points.add(point)
+                print(f'{terminal_style(f"Montato {name}/{area} in sola lettura:", "1;32", sys.stdout)} '
+                      f'{terminal_style(str(point), "36", sys.stdout)}', flush=True)
+        # The mounted read-only volume stays open, but no longer holds the operation lock.
         print(terminal_style('Lascia questo terminale aperto; premi Ctrl-C o espelli il volume dal Finder (⌘E).',
                              '2', sys.stdout), flush=True)
         while True:
@@ -2432,13 +2450,14 @@ def selected_names(scan: Scan, area: str) -> set[str]:
 
 
 def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
-                  enforce_limit: bool = True, check_conflicts: bool = False,
+                  enforce_limit: bool = True,
                   show_inventory: bool = False) -> list[dict]:
     if scan.errors:
         raise ConfigError("La selezione locale contiene errori. Eseguire macbackup check.")
     plans = []
     any_existing = False
     for target, areas in targets.items():
+        first_plan = len(plans)
         current_objects = {}
         for area, root in areas.items():
             local = selected_names(scan, area)
@@ -2524,14 +2543,27 @@ def transfer_plan(policy: Policy, scan: Scan, targets: dict, limit: int,
                               'policy_archives': icon_policy_archives,
                               'archive_policy': len(icon_policy_archives),
                               'archive_limit_exceeded': exceeded})
-        if check_conflicts:
-            conflicts = current_conflict_paths(current_objects['plain'], current_objects['private'])
-            if conflicts:
-                examples = ', '.join('/' + path for path in conflicts[:5])
-                remaining = f' (e altri {len(conflicts) - 5})' if len(conflicts) > 5 else ''
-                raise ConfigError(f'{target}/current: {len(conflicts)} percorsi in conflitto fra plain e private: '
-                                  f'{examples}{remaining}. Le due copie restano intatte; '
-                                  'consultare le aree separatamente e risolvere il conflitto.')
+        recoverable = []
+        unsafe = []
+        for path in current_conflict_paths(current_objects['plain'], current_objects['private']):
+            archivers = [(plan, item) for plan in plans[first_plan:]
+                         if plan.get('kind', 'files') == 'files'
+                         for item in plan['policy_archives']
+                         if item['relative'] == path and current_objects[plan['area']].get(path) is False]
+            if not archivers:
+                unsafe.append(path)
+                continue
+            for _, item in archivers:
+                item['pre_archive'] = True
+            recoverable.append({'target': target, 'path': '/' + path,
+                                'archive_from': sorted({plan['area'] for plan, _ in archivers})})
+        if unsafe:
+            examples = ', '.join('/' + path for path in unsafe[:5])
+            remaining = f' (e altri {len(unsafe) - 5})' if len(unsafe) > 5 else ''
+            raise ConfigError(f'{target}/current: {len(unsafe)} conflitti non risolvibili in modo sicuro: '
+                              f'{examples}{remaining}. Nessun trasferimento avviato.')
+        if recoverable:
+            plans[first_plan]['cross_area_conflicts'] = recoverable
     if not policy.roots and not any_existing:
         raise ConfigError("Nessuna sorgente selezionata né copia corrente da archiviare: operazione rclone bloccata.")
     return plans
@@ -2640,7 +2672,8 @@ def perform_sync(plan: dict, state: Path, run_id: str, limit: int, dry_run: bool
 
 
 def archive_policy_copies(plan: dict, run_id: str, completed: list[dict],
-                          activity: MountPulse | None = None) -> None:
+                          activity: MountPulse | None = None,
+                          on_complete=None) -> None:
     """Move policy-revoked current copies into the same area's run history."""
     for item in plan['policy_archives']:
         destination = remote_join(plan['root'], 'history/' + run_id + '/' + item['relative'])
@@ -2649,6 +2682,8 @@ def archive_policy_copies(plan: dict, run_id: str, completed: list[dict],
                          {'history_path': destination})
         if activity is not None:
             activity.completed += 1
+        if on_complete is not None:
+            on_complete()
 
 
 def archive_deleted_paths(plan: dict) -> list[str]:
@@ -2695,7 +2730,7 @@ def transport_operation(args, policy: Policy) -> int:
                 save_local_report(policy.state_dir, 'last-run.json', data)
             if args.command == 'check':
                 plans = transfer_plan(policy, scan, targets, limit,
-                                      enforce_limit=False, check_conflicts=True,
+                                      enforce_limit=False,
                                       show_inventory=True)
             else:
                 plans = transfer_plan(policy, scan, targets, limit,
@@ -2708,15 +2743,21 @@ def transport_operation(args, policy: Policy) -> int:
                                    else str(exc)))
                 save_local_report(policy.state_dir, 'last-run.json', data)
             raise
+        conflicts = [conflict for plan in plans for conflict in plan.get('cross_area_conflicts', [])]
         if args.command == "check":
+            warnings = scan.warnings + [
+                f"{item['target']}/current: {item['path']}: conflitto riparabile; "
+                f"la copia {', '.join(item['archive_from'])} va archiviata prima dei trasferimenti. "
+                "Usare preview per controllare max_delete."
+                for item in conflicts]
             result = {"scope": "remote-read-only", "ok": True,
                       "note": "Accesso e tipi dei remotes verificati; inventari letti senza modificare il cloud.",
-                      "summary": scan.summary(), "warnings": scan.warnings}
+                      "summary": scan.summary(), "warnings": warnings, "conflicts": conflicts}
             if getattr(args, "json", False):
                 print(json.dumps(result, ensure_ascii=False))
             else:
                 print(ui('Controllo remoto completato.', 'success') + ' ' + result['note'])
-                for warning in scan.warnings:
+                for warning in warnings:
                     print(issue_line('AVVISO:', warning, 'warning'))
                 print_selection_summary(result['summary'])
             return 0
@@ -2733,10 +2774,51 @@ def transport_operation(args, policy: Policy) -> int:
                 result['archive_deleted_completed_paths'] = ([] if not plan['deletions'] else None)
                 result['policy_archived'] = []
                 result['ok'] = False
+            results.append(result)
+        if args.command == 'run':
+            data['conflicts'] = conflicts
+            save_local_report(policy.state_dir, 'last-run.json', data)
+        prearchive_failed = False
+        if args.command == 'run':
+            # A reclassification must leave the old area's current before the new
+            # area's sync can publish the same logical path.
+            for plan, result in zip(plans, results):
+                transitions = [item for item in plan['policy_archives']
+                               if item['new_action'] in ('plain', 'private') or item.get('pre_archive')]
+                if not transitions:
+                    continue
+                data['active_phase'] = f"{plan['target']}/{plan['area']}/{result['kind']}:archive-transition"
+                result['in_progress'] = True
+                save_local_report(policy.state_dir, 'last-run.json', data)
+                try:
+                    with operation_activity(
+                            f'Archiviazione prima del trasferimento {plan["target"]}/{plan["area"]}',
+                            len(transitions)) as activity:
+                        if activity is not None:
+                            activity.count_verb = 'archived'
+                        archive_policy_copies(
+                            plan | {'policy_archives': transitions}, run_id,
+                            result['policy_archived'], activity,
+                            lambda: save_local_report(policy.state_dir, 'last-run.json', data))
+                except (KeyboardInterrupt, ConfigError, TransportError, OSError) as exc:
+                    result['error'] = ("Interrotto dall'utente durante l'archiviazione."
+                                       if isinstance(exc, KeyboardInterrupt) else str(exc))
+                    result['policy_archive_completion_uncertain'] = True
+                    data['interrupted'] = isinstance(exc, KeyboardInterrupt)
+                    prearchive_failed = True
+                finally:
+                    result.pop('in_progress', None)
+                    save_local_report(policy.state_dir, 'last-run.json', data)
+                if prearchive_failed:
+                    break
+        attempted = 0
+        for plan, result in zip(plans, results):
+            if prearchive_failed:
+                break
+            attempted += 1
+            if args.command == 'run':
                 result['in_progress'] = True
                 data['active_phase'] = f"{plan['target']}/{plan['area']}/{result['kind']}"
-            results.append(result)
-            if args.command == 'run':
                 save_local_report(policy.state_dir, 'last-run.json', data)
             if args.command == 'run':
                 print(f"{ui('Avvio', 'info', sys.stderr)} {plan['target']}/{plan['area']}/{result['kind']}: "
@@ -2751,13 +2833,19 @@ def transport_operation(args, policy: Policy) -> int:
                 if args.command == 'run':
                     result.update(transfer_metrics(stats, True))
                     result['archive_deleted_completed_paths'] = result['archive_deleted_paths'][:]
-                    if plan['policy_archives']:
+                    remaining_archives = [item for item in plan['policy_archives']
+                                          if item['new_action'] not in ('plain', 'private')
+                                          and not item.get('pre_archive')]
+                    if remaining_archives:
                         with operation_activity(
                                 f'Archiviazione policy {plan["target"]}/{plan["area"]}',
-                                len(plan['policy_archives'])) as activity:
+                                len(remaining_archives)) as activity:
                             if activity is not None:
                                 activity.count_verb = 'archived'
-                            archive_policy_copies(plan, run_id, result['policy_archived'], activity)
+                            archive_policy_copies(
+                                plan | {'policy_archives': remaining_archives}, run_id,
+                                result['policy_archived'], activity,
+                                lambda: save_local_report(policy.state_dir, 'last-run.json', data))
                 result["ok"] = True
             except TransferInterrupted as exc:
                 result.update(transfer_metrics(exc.stats, False))
@@ -2792,7 +2880,10 @@ def transport_operation(args, policy: Policy) -> int:
                         "Piano basato sulla selezione locale e sugli inventari current; "
                         "differenze di contenuto non verificate. Nessuna modifica cloud.") if args.command == 'preview' else None
         if args.command == "run":
-            complete = not data['interrupted'] and len(results) == len(plans)
+            complete = not data['interrupted'] and not prearchive_failed and attempted == len(plans)
+            for result in results:
+                if not result['ok'] and 'error' not in result:
+                    result['error'] = 'Non avviato: una fase precedente non è stata completata.'
             data.update(ok=all(item['ok'] for item in results),
                         complete=complete,
                         active_phase=None if complete else data['active_phase'],
@@ -2801,11 +2892,15 @@ def transport_operation(args, policy: Policy) -> int:
         else:
             data = {"operation": args.command, "run_id": run_id,
                     "ok": all(item["ok"] for item in results),
-                    "results": results, "note": preview_note}
+                    "results": results, "note": preview_note, "conflicts": conflicts}
         if getattr(args, "json", False):
             print(json.dumps(data, ensure_ascii=False, indent=2))
         else:
             print(ui(data["note"], 'subtle'))
+            for item in conflicts:
+                print(f"{ui('AVVISO:', 'warning')} {ui(item['target'] + '/current', 'remote')}: "
+                      f"{ui(display_safe_path(item['path']), 'muted')} in plain e private; "
+                      f"la copia {', '.join(item['archive_from'])} va archiviata prima dei trasferimenti.")
             for result in results:
                 outcome = ui('OK', 'success') if result['ok'] else ui('ERRORE', 'error')
                 absence_label = 'da archiviare perché assenti dalla selezione locale'

@@ -63,6 +63,9 @@ class MountTests(unittest.TestCase):
         def inventory(_roots, _name, input_fd):
             stages.append('inventory')
             self.assertFalse(termios.tcgetattr(input_fd)[3] & termios.ECHO)
+            with self.assertRaises(M['ConfigError']):
+                with M['operation_lock'](self.home / '.local/state/macbackup'):
+                    pass
             os.write(master, b'ignored')
             M['mount_input_wait'](input_fd, 0.1)
             self.assertFalse(select.select([input_fd], [], [], 0)[0])
@@ -155,11 +158,17 @@ class MountTests(unittest.TestCase):
         args = argparse.Namespace(target='google', area='plain', mountpoint=None)
         targets = ({'google': {'plain': 'localplain:MacBackup/plain', 'private': 'localcrypt:'}}, 25)
         output = io.StringIO()
+        def mounted_wait(_input_fd, _timeout):
+            # A mounted volume must not hold the operation lock indefinitely.
+            with M['operation_lock'](self.home / '.local/state/macbackup'):
+                pass
+            raise KeyboardInterrupt
         with redirect_stdout(output), patch('shutil.which', return_value='/synthetic/bin/rclone'), \
              patch('subprocess.Popen', side_effect=start), \
              patch('os.path.ismount', side_effect=lambda _path: mounted), \
-             patch('time.sleep', side_effect=KeyboardInterrupt), \
-             patch.dict(M['mount_operation'].__globals__, {'load_targets': lambda *_args: targets}):
+             patch.dict(M['mount_operation'].__globals__,
+                        {'load_targets': lambda *_args: targets,
+                         'mount_input_wait': mounted_wait}):
             result = M['mount_operation'](args, self.config, self.home)
         self.assertEqual(result, 0)
         process.terminate.assert_called_once()
@@ -169,6 +178,16 @@ class MountTests(unittest.TestCase):
         decision = M['Policy'](self.config, self.home).decide(point / 'current/file.txt')
         self.assertEqual(decision.action, 'skip')
         self.assertEqual(decision.rule, str(point))
+
+    def test_mount_fails_before_loading_targets_when_another_operation_is_active(self):
+        args = argparse.Namespace(target='google', area='all', mountpoint=None)
+        state = self.home / '.local/state/macbackup'
+        with M['operation_lock'](state), \
+             patch('shutil.which', return_value='/synthetic/bin/rclone'), \
+             patch.dict(M['mount_operation'].__globals__,
+                        {'load_targets': Mock(side_effect=AssertionError('loaded targets'))}):
+            with self.assertRaises(M['ConfigError']):
+                M['mount_operation'](args, self.config, self.home)
 
     def test_mount_reports_missing_rclone_before_creating_mountpoint(self):
         args = argparse.Namespace(target='google', area='plain', mountpoint=None)
@@ -338,3 +357,38 @@ class MountTests(unittest.TestCase):
                 'plain': str(self.base / 'plain'),
                 'private': str(self.base / 'private'),
             })
+
+    def test_merged_mount_refuses_duplicate_path_within_one_area(self):
+        entries = {
+            'plain': [
+                {'Path': 'Users/test/item', 'IsDir': False},
+                {'Path': 'Users/test/item', 'IsDir': False},
+            ],
+            'private': [],
+        }
+
+        def inventory(_root, label, *_args, **_kwargs):
+            return entries[label.rsplit('/', 1)[-1]]
+
+        with patch.dict(M['mount_current_conflicts'].__globals__,
+                        {'mount_inventory': inventory}):
+            with self.assertRaisesRegex(M['TransportError'], 'duplicat'):
+                M['mount_current_conflicts']({'plain': 'plain:', 'private': 'private:'}, 'google')
+
+    def test_merged_mount_refuses_missing_object_type(self):
+        def inventory(_root, label, *_args, **_kwargs):
+            return [{'Path': 'Users/test/item'}] if label.endswith('/plain') else []
+
+        with patch.dict(M['mount_current_conflicts'].__globals__,
+                        {'mount_inventory': inventory}):
+            with self.assertRaisesRegex(M['TransportError'], 'tipo'):
+                M['mount_current_conflicts']({'plain': 'plain:', 'private': 'private:'}, 'google')
+
+    def test_merged_mount_refuses_control_character_in_current_path(self):
+        def inventory(_root, label, *_args, **_kwargs):
+            return [{'Path': 'Users/test/bad\nname', 'IsDir': False}] if label.endswith('/plain') else []
+
+        with patch.dict(M['mount_current_conflicts'].__globals__,
+                        {'mount_inventory': inventory}):
+            with self.assertRaisesRegex(M['TransportError'], 'percorso non valido'):
+                M['mount_current_conflicts']({'plain': 'plain:', 'private': 'private:'}, 'google')

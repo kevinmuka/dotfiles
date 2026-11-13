@@ -12,23 +12,7 @@ A read-only Google preview on 2026-11-07 reported zero policy archives and 20 pl
 
 ---
 
-## 1. Cross-Area Conflict Check (`check_conflicts`) Only Enabled in `check --remote`
-
-- **Location:** [`home/.config/scripts/macbackup`](../../home/.config/scripts/macbackup) (`transport_operation`)
-- **Issue:** `transfer_plan()` accepts `check_conflicts=(args.command == 'check')`. As a result, `macbackup check --remote` and `macbackup mount --area all` both block if a file exists at the same path in both `plain/current` and `private/current`, whereas `macbackup preview --target` and `macbackup run --target` do not enable `check_conflicts`.
-  - Note: in normal operation, `transfer_plan` classifies any existing remote object that belongs to the *other* area into `policy_archives`, so `run` will move the old copy to `history` at the end of the phase. However, if a conflict arises from external manual modification or an interrupted run where `archive_policy_copies` did not run, deciding whether `preview` / `run` should warn or auto-heal via `policy_archives` is worth confirming.
-
----
-
-## 2. `mount` Does Not Acquire `operation_lock` During Inventory / Startup
-
-- **Location:** [`home/.config/scripts/macbackup`](../../home/.config/scripts/macbackup) (`mount_operation` / `_mount_operation`)
-- **Issue:** While `mount` is a long-running foreground command (so holding an exclusive lock for the entire duration of the mount would prevent `status` or `versions` from running while mounted), `_mount_operation` does not check whether a `run` or `forget --apply` is actively mutating `current` while `mount_current_conflicts` reads the inventories.
-- **Proposed Fix:** Optionally acquire a short-lived lock during `mount_current_conflicts`, or document that mounting while `run` / `forget` is in flight may see a mid-transfer inventory.
-
----
-
-## 3. Incomplete English Localization (`ITALIAN_TO_ENGLISH` and `localized()`) *(Added by Gemini)*
+## 1. Incomplete English Localization (`ITALIAN_TO_ENGLISH` and `localized()`) *(Added by Gemini)*
 
 - **Author:** Gemini (`0.14.3` review)
 - **Location:** [`home/.config/scripts/macbackup`](../../home/.config/scripts/macbackup) (`ITALIAN_TO_ENGLISH`, `localized`, `init_config`, `MountPulse.done`, `transport_operation`, `forget_operation`, `versions_operation`)
@@ -46,7 +30,7 @@ A read-only Google preview on 2026-11-07 reported zero policy archives and 20 pl
 
 ---
 
-## 4. Redundant `os.path.realpath` Calls in `Policy.decide` *(Added by Gemini)*
+## 2. Redundant `os.path.realpath` Calls in `Policy.decide` *(Added by Gemini)*
 
 - **Author:** Gemini (`0.14.3` review)
 - **Location:** [`home/.config/scripts/macbackup`](../../home/.config/scripts/macbackup) (`Policy.decide`, `scan_policy`, `transfer_plan`)
@@ -55,7 +39,7 @@ A read-only Google preview on 2026-11-07 reported zero policy archives and 20 pl
 
 ---
 
-## 5. Future Roadmap Items (Tracked from Architecture Design)
+## 3. Future Roadmap Items (Tracked from Architecture Design)
 
 - **Proton Drive target setup & verification:** configure `pdrive:` and `pdrive-private:` (`crypt`), test `run`, `verify`, `restore`, `mount`, and `forget --mode trash`.
 - **External volume identity verification:** verify volume UUID / mount identity when backing up paths under `/Volumes/...` so an unmounted or wrong volume is never mistaken for a valid source.
