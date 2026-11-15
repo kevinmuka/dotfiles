@@ -120,7 +120,7 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_identical_plain_private_entries_are_rejected(self):
         self.set_rules(plain=[self.project, self.env], private=[self.env])
-        with self.assertRaisesRegex(ConfigError, 'percorso ripetuto'):
+        with self.assertRaisesRegex(ConfigError, 'duplicate path'):
             self.policy()
 
     def test_exact_plain_entry_cannot_downgrade_private_parent(self):
@@ -372,15 +372,15 @@ class LocalSelectorTests(unittest.TestCase):
     def test_declared_path_type_must_match_existing_object(self):
         self.set_rules(plain=[self.project])
         (self.config / 'plain-paths.txt').write_text(str(self.project) + '\n')
-        with self.assertRaisesRegex(ConfigError, 'directory con / finale'):
+        with self.assertRaisesRegex(ConfigError, 'directory with trailing /'):
             self.policy()
         (self.config / 'plain-paths.txt').write_text(str(self.normal) + '/\n')
-        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+        with self.assertRaisesRegex(ConfigError, 'without trailing /'):
             self.policy()
         alias = self.project / 'directory-link'
         alias.symlink_to(self.project, target_is_directory=True)
         (self.config / 'plain-paths.txt').write_text(str(alias) + '/\n')
-        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+        with self.assertRaisesRegex(ConfigError, 'without trailing /'):
             self.policy()
 
     def test_future_exclusion_type_is_checked_when_it_appears(self):
@@ -388,16 +388,16 @@ class LocalSelectorTests(unittest.TestCase):
         (self.config / 'exclude-paths.txt').write_text(str(future) + '/\n')
         self.assertFalse(self.scan().errors)
         future.write_text('synthetic file')
-        with self.assertRaisesRegex(ConfigError, 'senza / finale'):
+        with self.assertRaisesRegex(ConfigError, 'without trailing /'):
             self.policy()
 
     def test_normalized_duplicate_paths_are_config_errors(self):
         (self.config / 'plain-paths.txt').write_text(
             str(self.project) + '/\n' + str(self.project / '.') + '/\n')
-        with self.assertRaisesRegex(ConfigError, 'percorso ripetuto'):
+        with self.assertRaisesRegex(ConfigError, 'duplicate path'):
             self.policy()
         self.set_rules(plain=[self.project], private=[self.project])
-        with self.assertRaisesRegex(ConfigError, 'plain-paths.txt:1 e private-paths.txt:1'):
+        with self.assertRaisesRegex(ConfigError, 'plain-paths.txt:1 and private-paths.txt:1'):
             self.policy()
 
     def test_name_policy_case_only_duplicates_are_errors(self):
@@ -409,7 +409,7 @@ class LocalSelectorTests(unittest.TestCase):
                 settings.write_text(original.replace(
                     f'{field} = {"[]" if field == "private_directory_names" else "[\".DS_Store\"]"}',
                     f'{field} = {value}'))
-                with self.assertRaisesRegex(ConfigError, 'duplicati'):
+                with self.assertRaisesRegex(ConfigError, 'duplicate'):
                     self.policy()
         settings.write_text(original)
 
@@ -419,30 +419,30 @@ class LocalSelectorTests(unittest.TestCase):
         settings.write_text(original.replace('private_directory_names = []',
                                              'private_directory_names = [".git"]'))
         self.set_rules(patterns=['.GIT/'])
-        with self.assertRaisesRegex(ConfigError, 'regole ridondanti'):
+        with self.assertRaisesRegex(ConfigError, 'redundant rules'):
             self.policy()
         self.set_rules(patterns=['.g*/'])
-        with self.assertRaisesRegex(ConfigError, 'regole ridondanti'):
+        with self.assertRaisesRegex(ConfigError, 'redundant rules'):
             self.policy()
         settings.write_text(original)
         self.set_rules(patterns=['.DS_*/'])
         self.assertFalse(self.scan().errors)
         self.set_rules(patterns=['.DS_*'])
-        with self.assertRaisesRegex(ConfigError, 'protezioni sovrapposte'):
+        with self.assertRaisesRegex(ConfigError, 'overlapping protections'):
             self.policy()
         self.set_rules(patterns=['.d*'])
-        with self.assertRaisesRegex(ConfigError, 'protezioni sovrapposte'):
+        with self.assertRaisesRegex(ConfigError, 'overlapping protections'):
             self.policy()
 
     def test_complete_pattern_containment_fails_and_partial_overlap_warns(self):
         self.set_rules(patterns=['node*/', 'node_modules/'])
-        with self.assertRaisesRegex(ConfigError, 'pattern ridondanti'):
+        with self.assertRaisesRegex(ConfigError, 'redundant patterns'):
             self.policy()
         self.set_rules(patterns=['node*/', 'node*modules/'])
-        with self.assertRaisesRegex(ConfigError, 'pattern ridondanti'):
+        with self.assertRaisesRegex(ConfigError, 'redundant patterns'):
             self.policy()
         self.set_rules(patterns=['node*/', '*modules/'])
-        self.assertTrue(any('parzialmente sovrapposti' in warning
+        self.assertTrue(any('partially overlapping patterns' in warning
                             for warning in self.scan().warnings))
 
     @unittest.skipUnless(shutil.which('git'), 'Git is needed for .gitignore matching')
@@ -484,7 +484,7 @@ class LocalSelectorTests(unittest.TestCase):
         self.set_rules(plain=[missing], excluded=[self.home])
         scan = self.scan()
         self.assertFalse(scan.errors)
-        self.assertTrue(any('sospeso' in warning for warning in scan.warnings))
+        self.assertTrue(any('suspended' in warning for warning in scan.warnings))
 
     def test_symlink_directory_is_preserved_and_never_traversed(self):
         outside = self.write(self.home / "outside/sensitive.txt")
@@ -519,11 +519,11 @@ class LocalSelectorTests(unittest.TestCase):
         alias = self.project / "credential-copy"
         os.link(key, alias)
         self.set_rules(plain=[self.project], private=[key])
-        self.assertTrue(any("normale e privato" in error for error in self.scan().errors))
+        self.assertTrue(any("plain and private" in error for error in self.scan().errors))
 
     def test_observed_protected_file_cannot_escape_via_hardlink_name(self):
         os.link(self.env, self.project / "innocent-name")
-        self.assertTrue(any("alias di un file con nome protetto" in error for error in self.scan().errors))
+        self.assertTrue(any("alias of a protected filename" in error for error in self.scan().errors))
 
     def test_state_is_implicitly_excluded_even_with_exact_entry(self):
         state = self.write(self.home / ".local/state/macbackup/plan.json")
@@ -554,7 +554,7 @@ class LocalSelectorTests(unittest.TestCase):
     def test_unreadable_file_blocks_scan(self):
         original = os.access
         with patch.object(os, "access", side_effect=lambda path, mode: False if path == self.normal else original(path, mode)):
-            self.assertTrue(any("non leggibile" in error for error in self.scan().errors))
+            self.assertTrue(any("unreadable" in error for error in self.scan().errors))
 
     def test_symlink_loop_does_not_get_traversed(self):
         link = self.project / "loop"
@@ -586,7 +586,7 @@ class LocalSelectorTests(unittest.TestCase):
 
     def test_reserved_rclonelink_filename_blocks_scan(self):
         self.write(self.project / "real-file.rclonelink")
-        self.assertTrue(any("nome riservato" in error for error in self.scan().errors))
+        self.assertTrue(any("name reserved" in error for error in self.scan().errors))
 
     def test_special_file_is_skipped_and_explicit_special_root_is_error(self):
         fifo = self.project / "pipe"

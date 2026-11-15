@@ -61,10 +61,10 @@ class VerifyProgressTests(unittest.TestCase):
                 'NO_COLOR': '', 'PYTHON_COLORS': ''}):
             checked = M['MountPulse']('Verifying google/plain/files', 3)
             checked.completed = 3
-            checked.done('completato')
+            checked.done('complete')
             inventory = M['MountPulse']('Inventory google/plain/current', show_count='entries')
             inventory.completed = 42
-            inventory.done('completato')
+            inventory.done('complete')
         output = terminal.getvalue()
         self.assertIn('(0s).  \x1b[2;90mChecked 3/3\x1b[0m', output)
         self.assertIn('(0s).  \x1b[2;90mEntries read 42\x1b[0m', output)
@@ -79,7 +79,7 @@ class VerifyProgressTests(unittest.TestCase):
             pulse = M['MountPulse']('Inventory google/plain/current', show_count='entries')
             pulse.started = 0
             pulse.draw()
-            pulse.done('completato')
+            pulse.done('complete')
         output = terminal.getvalue()
         self.assertIn('1h44m30s', output)
         self.assertNotIn('6270s', output)
@@ -105,10 +105,10 @@ class VerifyProgressTests(unittest.TestCase):
                     patch.dict(M['verify_report'].__globals__, {
                         'mount_inventory': lambda *args, **kwargs: [
                             {'Path': 'a.txt', 'Size': 3}]}, clear=False):
-                pulse = M['MountPulse']('Verifica google/plain/files', 1)
+                pulse = M['MountPulse']('Verifying google/plain/files', 1)
                 result = M['verify_report'](str(source), 'synthetic:', ['a.txt'],
                                             source, False, False, True, pulse)
-                pulse.done('completato')
+                pulse.done('complete')
             self.assertEqual(result['matched'], 1)
             self.assertIn('Comparing sizes google/plain/files', terminal.getvalue())
             self.assertIn('Checked 1/1', terminal.getvalue())
@@ -153,7 +153,7 @@ class VerifyProgressTests(unittest.TestCase):
                                          activity=pulse)
             self.assertEqual(len(items), 2)
             self.assertEqual(pulse.completed, 2)
-            self.assertEqual(pulse.label, 'Inventario synthetic/current')
+            self.assertEqual(pulse.label, 'Inventory synthetic/current')
 
     def test_remote_check_warning_uses_muted_path_style(self):
         class Terminal(io.StringIO):
@@ -624,9 +624,9 @@ except module['TransferInterrupted'] as exc:
         display.stats = stats
         binary = '\n'.join(M['progress_lines'](stats, self.home, 2, True, False,
                                               display.label))
-        self.assertIn('Tempo 1m5s', binary)
+        self.assertIn('Elapsed 1m5s', binary)
         self.assertIn('1.0 MiB / 2.0 MiB', binary)
-        self.assertIn('VELOCITÀ  1.0 MiB/s', binary)
+        self.assertIn('SPEED  1.0 MiB/s', binary)
         self.assertIn('[#################------------------]', binary)
         self.assertIn(str(self.normal).lstrip('/'), binary)
         self.assertNotIn('65.9', binary)
@@ -635,12 +635,12 @@ except module['TransferInterrupted'] as exc:
         decimal = '\n'.join(M['progress_lines'](stats, self.home, 2,
                                                display.binary, display.legend, display.label))
         self.assertIn('1.0 MB / 2.1 MB', decimal)
-        self.assertIn('VELOCITÀ  1.0 MB/s', decimal)
-        self.assertIn('Spostati sul cloud:', decimal)
-        self.assertIn('[?] Nascondi legenda', decimal)
-        self.assertIn('Unità attuali: decimale', decimal)
-        self.assertIn('Legenda (solo fase corrente:', decimal)
-        self.assertIn('Tempo stimato: previsione variabile', decimal)
+        self.assertIn('SPEED  1.0 MB/s', decimal)
+        self.assertIn('Server-side moves', decimal)
+        self.assertIn('[?] Hide legend', decimal)
+        self.assertIn('Current units: decimal', decimal)
+        self.assertIn('Legend (current phase only:', decimal)
+        self.assertIn('ETA: estimate may change', decimal)
 
     def test_incomplete_remote_copy_is_replaced_on_next_run(self):
         incomplete = self.remote_path(self.normal)

@@ -98,9 +98,9 @@ class MountTests(unittest.TestCase):
         with patch('sys.stderr', terminal), \
              patch.dict(os.environ, {'TERM': 'xterm-256color', 'NO_COLOR': '',
                                      'PYTHON_COLORS': '1'}):
-            pulse = M['MountPulse']('Inventario google/plain')
+            pulse = M['MountPulse']('Inventory google/plain')
             pulse.draw(1048576)
-            pulse.done('12 voci lette')
+            pulse.done('12 entries read')
         output = terminal.getvalue()
         self.assertRegex(output, r'\[[#.]{22}\]')
         self.assertIn('\x1b[1;36m', output)
@@ -116,15 +116,15 @@ class MountTests(unittest.TestCase):
         terminal = Terminal()
         with patch('sys.stderr', terminal), \
              patch.dict(os.environ, {'NO_COLOR': '1', 'PYTHON_COLORS': ''}):
-            pulse = M['MountPulse']('Avvio google/all')
+            pulse = M['MountPulse']('Starting google/all')
             pulse.draw()
-            pulse.done('completato')
+            pulse.done('complete')
         self.assertNotIn('\x1b[1;36m', terminal.getvalue())
         self.assertNotIn('\x1b[32m', terminal.getvalue())
         redirected = io.StringIO()
         with patch('sys.stderr', redirected):
-            pulse = M['MountPulse']('Avvio google/all')
-            pulse.done('completato')
+            pulse = M['MountPulse']('Starting google/all')
+            pulse.done('complete')
         self.assertNotIn('\x1b[', redirected.getvalue())
 
     @unittest.skipUnless(shutil.which('rclone'), 'rclone is needed for inventory checks')
@@ -133,7 +133,7 @@ class MountTests(unittest.TestCase):
         process.poll.return_value = None
         with patch('subprocess.Popen', return_value=process), \
              patch('time.sleep', side_effect=KeyboardInterrupt):
-            with self.assertRaisesRegex(M['ConfigError'], 'interrotto'):
+            with self.assertRaisesRegex(M['ConfigError'], 'interrupted'):
                 M['mount_inventory']('synthetic:', 'google/plain')
         process.terminate.assert_called_once()
         process.wait.assert_called_once()
@@ -272,7 +272,7 @@ class MountTests(unittest.TestCase):
         with patch('subprocess.Popen', side_effect=start), \
              patch('os.path.ismount', side_effect=lambda _path: mounted), \
              patch.dict(M['mount_operation'].__globals__, {'load_targets': lambda *_args: targets}):
-            with self.assertRaisesRegex(M['TransportError'], 'codice 1'):
+            with self.assertRaisesRegex(M['TransportError'], 'code 1'):
                 M['mount_operation'](args, self.config, self.home)
         self.assertFalse((self.home / 'Desktop/google-plain').exists())
 
@@ -381,7 +381,7 @@ class MountTests(unittest.TestCase):
 
         with patch.dict(M['mount_current_conflicts'].__globals__,
                         {'mount_inventory': inventory}):
-            with self.assertRaisesRegex(M['TransportError'], 'tipo'):
+            with self.assertRaisesRegex(M['TransportError'], 'type'):
                 M['mount_current_conflicts']({'plain': 'plain:', 'private': 'private:'}, 'google')
 
     def test_merged_mount_refuses_control_character_in_current_path(self):
@@ -390,5 +390,5 @@ class MountTests(unittest.TestCase):
 
         with patch.dict(M['mount_current_conflicts'].__globals__,
                         {'mount_inventory': inventory}):
-            with self.assertRaisesRegex(M['TransportError'], 'percorso non valido'):
+            with self.assertRaisesRegex(M['TransportError'], 'invalid path'):
                 M['mount_current_conflicts']({'plain': 'plain:', 'private': 'private:'}, 'google')

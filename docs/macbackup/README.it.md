@@ -1,6 +1,6 @@
 # macbackup: manuale d'uso
 
-**Versione di macbackup documentata: `0.14.8`.** Verifica la versione installata con `macbackup --version`.
+**Versione di macbackup documentata: `0.15.0`.** Verifica la versione installata con `macbackup --version`.
 
 Questa è la traduzione italiana del [manuale principale in inglese](README.md). In caso di differenze, fa fede la versione inglese, da aggiornare per prima quando cambia il programma.
 
@@ -31,7 +31,7 @@ export MACBACKUP_LANG=it                    # anche i comandi successivi
 source ~/.zsh/integrations/macbackup.zsh    # aggiorna l'autocompletamento nella shell aperta
 ```
 
-Per tornare all'inglese, eseguire `unset MACBACKUP_LANG` e ricaricare l'integrazione Zsh con lo stesso comando `source`. `MACBACKUP_LANG=en` seleziona esplicitamente l'inglese. La scelta non cambia i comandi, le flag, i nomi dei campi JSON, i percorsi o le regole di backup. Le stringhe esplicative dei nuovi resoconti seguono la lingua attiva; `status` mostra i resoconti già salvati nella lingua originale, senza modificarli. La lingua dell'autocompletamento viene scelta quando si carica l'integrazione Zsh, quindi cambiare la variabile in una shell già aperta richiede il nuovo `source`.
+Per tornare all'inglese, eseguire `unset MACBACKUP_LANG` e ricaricare l'integrazione Zsh con lo stesso comando `source`. `MACBACKUP_LANG=en` seleziona esplicitamente l'inglese. Lo script principale usa l'inglese come lingua sorgente, anche per aiuto, errori, avanzamento e commenti creati da `init`. Le formulazioni italiane già presenti sono conservate nel modulo opzionale `home/.config/scripts/macbackup_locale_it.py`, caricato solo con `MACBACKUP_LANG=it`: durante l'installazione va tenuto accanto allo script. La scelta non cambia i comandi, le flag, i nomi dei campi JSON, i percorsi o le regole di backup. Le stringhe esplicative dei nuovi resoconti seguono la lingua attiva; `status` mostra i resoconti già salvati nella lingua originale, senza modificarli. La lingua dell'autocompletamento viene scelta quando si carica l'integrazione Zsh, quindi cambiare la variabile in una shell già aperta richiede il nuovo `source`.
 
 ## 2. Posizione sul Mac e rapporto con Git
 

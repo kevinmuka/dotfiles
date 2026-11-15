@@ -1,6 +1,6 @@
 # macbackup: user manual
 
-**Documented macbackup version: `0.14.8`.** Check the installed version with `macbackup --version`.
+**Documented macbackup version: `0.15.0`.** Check the installed version with `macbackup --version`.
 
 `macbackup` selects files and directories on a Mac, copies them through rclone, and separates readable files (`plain`) from files encrypted with rclone crypt (`private`). The remote layout mirrors original paths and keeps previous copies in `history`. It is neither a bootable Mac backup nor a consistent snapshot of running applications.
 
@@ -29,7 +29,7 @@ export MACBACKUP_LANG=it                    # subsequent commands too
 source ~/.zsh/integrations/macbackup.zsh    # reload completion in this shell
 ```
 
-Use `unset MACBACKUP_LANG` and reload the integration to return to English; `MACBACKUP_LANG=en` explicitly selects English. This setting does not change commands, flags, JSON field names, paths, or backup rules. Explanatory strings in new reports use the active language. `status` displays previously saved reports in their original language without rewriting them. Completion chooses its language when the Zsh integration is loaded, so changing the variable in an open shell requires sourcing it again.
+Use `unset MACBACKUP_LANG` and reload the integration to return to English; `MACBACKUP_LANG=en` explicitly selects English. English is the source language in the main script, including help, errors, progress labels, and generated `init` comments. Established Italian wording is kept in the optional sibling catalog `home/.config/scripts/macbackup_locale_it.py`, loaded only for `MACBACKUP_LANG=it`. Keep that file beside the executable when installing it. This setting does not change commands, flags, JSON field names, paths, or backup rules. Explanatory strings in new reports use the active language. `status` displays previously saved reports in their original language without rewriting them. Completion chooses its language when the Zsh integration is loaded, so changing the variable in an open shell requires sourcing it again.
 
 ## 2. Location on the Mac and relationship with Git
 

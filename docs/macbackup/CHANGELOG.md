@@ -6,6 +6,12 @@ When a rule changes, update the manual first if the user contract changes. Then 
 
 ---
 
+## 2026-11-13 — English source and optional Italian catalog (0.15.0)
+
+- Moved the established Italian interface wording out of the main script into the optional sibling `macbackup_locale_it.py`. The main script now defines messages, help, progress labels, errors, and `init` templates in English; `MACBACKUP_LANG=it` selects Italian. The existing English and Italian Zsh completions remain separate.
+- Kept command names, options, JSON field names, path values, and backup rules unchanged. Previously saved reports remain in their original language. A structured message template protects a source path containing interface-like words from translation in the suspended-source warning.
+- The macbackup synthetic suite passed (222 tests), including focused English/Italian checks for generated files, a dynamic mount error, policy archive labels, preserved paths, and saved reports. No live cloud service was contacted for this change.
+
 ## 2026-11-13 — validate merged mount inventories (0.14.8)
 
 - The merged mount now rejects duplicate or invalid paths and entries with missing or invalid file/directory types within either current area, matching the remote check's inventory validation. Synthetic tests cover all three cases. No live cloud mount was performed for this change.
