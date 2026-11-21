@@ -1,0 +1,131 @@
+#compdef localbackup
+
+# Deliberately offline: never execute localbackup, launchctl, or macbackup.
+local curcontext="$curcontext" context state state_descr line
+local -A opt_args
+local -a commands app_names
+app_names=(alfred bartender)
+
+_localbackup_apps() {
+  compadd -- "${app_names[@]}"
+}
+
+_localbackup_apps_or_all() {
+  compadd -- "${app_names[@]}" all
+}
+
+commands=(
+  'list:list supported applications'
+  'init:create an editable TOML configuration'
+  'now:create a backup without changing its schedule'
+  'run:alias for now'
+  'start:back up now and enable the schedule'
+  'stop:disable the schedule and keep archives'
+  'status:show schedules and LaunchAgent state'
+  'archives:list local archive files'
+  'restore:validate or restore an archive'
+)
+
+_localbackup_absolute_path() {
+  if [[ -z "$PREFIX" ]]; then
+    compadd -S '' -- /
+  elif [[ "$PREFIX" == /* || "$PREFIX" == \~* ]]; then
+    _path_files "$@"
+  fi
+}
+
+if (( CURRENT == 2 )) && [[ "$PREFIX" == -* && "$PREFIX" != *=* ]]; then
+  local -a global_options
+  global_options=(
+    '--config:alternate TOML configuration'
+    '--help:command help'
+    '--version:installed version'
+    '-h:command help'
+  )
+  _describe -t options 'global options' global_options
+  return
+fi
+
+_arguments -C -A '-*' \
+  '(- *)'{-h,--help}'[command help]' \
+  '(- *)--version[installed version]' \
+  '--config=[alternate TOML configuration]:absolute file:_localbackup_absolute_path' \
+  '1:command:->command' \
+  '*::argument:->arguments'
+
+case "$state" in
+  command)
+    _describe -t commands 'localbackup command' commands
+    ;;
+  arguments)
+    # Add future apps to app_names, then opt in only to their own flags below.
+    local selected_app='' token
+    for token in "${line[@]}"; do
+      if (( ${app_names[(Ie)$token]} )); then
+        selected_app="$token"
+        break
+      elif [[ "$token" == all ]]; then
+        selected_app=all
+        break
+      fi
+    done
+    case "$line[1]" in
+      list|init)
+        _arguments '(- *)'{-h,--help}'[show help]' '--json[JSON output]'
+        ;;
+      now|run)
+        local -a run_options
+        run_options=(
+          '(- *)'{-h,--help}'[show help]'
+          '--json[JSON output]'
+          '--keep=[versions to retain]:count:'
+        )
+        if [[ "$selected_app" != '' && "$selected_app" != all ]]; then
+          run_options+=('--output-dir=[archive directory for this run]:absolute folder:_localbackup_absolute_path -/')
+        fi
+        case "$selected_app" in
+          alfred)
+            run_options+=('--preferences-source=[Alfred Preferences source]:absolute folder:_localbackup_absolute_path -/')
+            ;;
+        esac
+        _arguments \
+          "${run_options[@]}" \
+          '1:application:_localbackup_apps_or_all'
+        ;;
+      start)
+        _arguments \
+          '(- *)'{-h,--help}'[show help]' \
+          '--json[JSON output]' \
+          '1:application:_localbackup_apps_or_all'
+        ;;
+      stop|status|archives)
+        _arguments \
+          '(- *)'{-h,--help}'[show help]' \
+          '--json[JSON output]' \
+          '1::application:_localbackup_apps_or_all'
+        ;;
+      restore)
+        local -a restore_options
+        restore_options=(
+          '(- *)'{-h,--help}'[show help]'
+          '--json[JSON output]'
+          '--apply[replace current settings after validation]'
+        )
+        case "$selected_app" in
+          alfred)
+            restore_options+=(
+              '--preferences=[Alfred Preferences ZIP]:archive:_files -g "*.zip"'
+              '--workflow-data=[Alfred Workflow Data archive]:archive:_files -g "*.zip"'
+            )
+            ;;
+          bartender)
+            restore_options+=('--archive=[Bartender settings archive]:archive:_files -g "*.zip"')
+            ;;
+        esac
+        _arguments \
+          "${restore_options[@]}" \
+          '1:application:_localbackup_apps'
+        ;;
+    esac
+    ;;
+esac

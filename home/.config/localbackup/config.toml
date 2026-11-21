@@ -1,0 +1,24 @@
+# localbackup creates local archives. It never sends them to the cloud.
+# Run "localbackup start all" to make these schedules active.
+
+[storage]
+root_dir = "~/.backups"
+
+[alfred]
+subdir = "apps/customization/alfred/preferences"
+keep = 12
+# preferences_source = "~/Library/Application Support/Alfred/Alfred.alfredpreferences"
+
+[alfred.schedule]
+frequency = "weekly" # daily, weekly, or off
+weekday = "monday"   # used only for weekly schedules
+time = "03:00"       # 24-hour local time
+
+[bartender]
+subdir = "apps/customization/bartender"
+keep = 12
+
+[bartender.schedule]
+frequency = "weekly"
+weekday = "monday"
+time = "03:15"
