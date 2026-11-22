@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from ..common import BackupError, archive_path, check_zip, prune, restricted_directory, sqlite_snapshot
 from ..config import default_output_dir
+from ._api import App, Option
 
 
 DOMAIN = "com.surteesstudios.Bartender"
@@ -129,3 +130,41 @@ def backup(
             pending.unlink(missing_ok=True)
     prune(output_dir, ARCHIVE_PREFIX, ".zip", keep)
     return [{"kind": "settings", "path": str(output)}]
+
+
+def _run_backup(settings, args):
+    return backup(
+        output_dir=getattr(args, "output_dir", None) or settings.output_dir,
+        keep=settings.keep if getattr(args, "keep", None) is None else args.keep,
+    )
+
+
+def _run_restore(settings, args):
+    from ..restore import restore_bartender
+
+    if args.archive is None:
+        raise BackupError("Select --archive for Bartender")
+    return restore_bartender(settings, archive=args.archive, apply=args.apply)
+
+
+def _archive_sources(settings):
+    return (("settings", settings.output_dir, ARCHIVE_PREFIX, ".zip"),)
+
+
+APP = App(
+    name="bartender",
+    default_subdir="apps/customization/bartender",
+    default_time="03:15",
+    example_config='''[bartender]
+subdir = "apps/customization/bartender"
+keep = 12
+
+[bartender.schedule]
+frequency = "weekly"
+weekday = "monday"
+time = "03:15"''',
+    backup=_run_backup,
+    restore=_run_restore,
+    archive_sources=_archive_sources,
+    restore_options=(Option("--archive", "Bartender settings .zip archive", "archive"),),
+)

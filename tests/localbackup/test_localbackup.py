@@ -1,24 +1,110 @@
 """Recovery-format checks using disposable Alfred and Bartender data."""
 
-from contextlib import closing, redirect_stderr, redirect_stdout
+from contextlib import closing, nullcontext, redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+import importlib
 import plistlib
 import sqlite3
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from zipfile import ZipFile, ZipInfo
 
-from lib.localbackup import archive, config, restore, scheduler
+from lib.localbackup import apps, archive, config, restore, scheduler
 from lib.localbackup.apps import alfred, bartender
 from lib.localbackup.common import BackupError
-from lib.localbackup.cli import main, parser
+from lib.localbackup.cli import completion_spec, main, parser
 
 
 class LocalBackupTests(unittest.TestCase):
+    def test_new_app_module_registers_cli_config_scheduler_and_completion(self):
+        with tempfile.TemporaryDirectory(prefix="localbackup-plugin-") as temporary:
+            root = Path(temporary)
+            module = root / "sampleapp.py"
+            module.write_text('''from pathlib import Path
+from ._api import App, Option
+
+def backup(settings, args):
+    directory = args.output_dir or settings.output_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    archive = directory / "Sample Backup.zip"
+    archive.write_bytes(b"sample")
+    return [{"kind": "settings", "path": str(archive)}]
+
+def restore(settings, args):
+    return {"app": "sampleapp", "apply": args.apply, "archive": str(args.bundle)}
+
+def sources(settings):
+    return (("settings", settings.output_dir, "Sample Backup", ".zip"),)
+
+def parse_config(table):
+    from ..config import path_setting
+    return {"profile": path_setting(table["profile"], "sampleapp.profile")} if "profile" in table else {}
+
+APP = App(
+    name="sampleapp", default_subdir="apps/sampleapp", default_time="04:00",
+    example_config="[sampleapp]\\nsubdir = \\"apps/sampleapp\\"\\n[sampleapp.schedule]\\ntime = \\"04:00\\"",
+    backup=backup, restore=restore, archive_sources=sources,
+    now_options=(Option("--profile", "Profile folder"),),
+    restore_options=(Option("--bundle", "Settings ZIP", "archive"),),
+    config_keys=("profile",), parse_config=parse_config,
+)
+''')
+            apps.__path__.append(str(root))
+            importlib.invalidate_caches()
+            try:
+                config_path = root / "config.toml"
+                config_path.write_text(f'[storage]\nroot_dir = "{root}"\n[sampleapp]\nprofile = "{root}"\n')
+                self.assertIn("sampleapp", config.load(config_path))
+                self.assertIn("[sampleapp]", config.example())
+                self.assertIn("app\tsampleapp", completion_spec())
+                self.assertIn("--bundle", completion_spec())
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["list", "--json"]), 0)
+                self.assertIn('"sampleapp"', output.getvalue())
+                parsed = parser().parse_args(["now", "sampleapp", "--profile", str(root)])
+                self.assertEqual(parsed.profile, root)
+                with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                    parser().parse_args(["now", "sampleapp", "--preferences-source", str(root)])
+                output = StringIO()
+                with redirect_stdout(output), patch("lib.localbackup.cli.app_lock", return_value=nullcontext()):
+                    status = main(["--config", str(config_path), "now", "sampleapp", "--json"])
+                self.assertEqual(status, 0, output.getvalue())
+                self.assertIn('"app": "sampleapp"', output.getvalue())
+                with (
+                    redirect_stdout(StringIO()),
+                    patch("lib.localbackup.cli.app_lock", return_value=nullcontext()),
+                    patch("lib.localbackup.cli.scheduler.preflight"),
+                    patch("lib.localbackup.cli.scheduler.start", return_value={"loaded": True}),
+                ):
+                    self.assertEqual(main(["--config", str(config_path), "start", "sampleapp", "--json"]), 0)
+                settings = config.load(config_path)["sampleapp"]
+                self.assertEqual(len(restore.archives("sampleapp", settings)), 1)
+                self.assertEqual(scheduler.agent("sampleapp", settings, root / "launcher", config_path)["StartCalendarInterval"], {"Hour": 4, "Minute": 0, "Weekday": 1})
+                with (
+                    redirect_stdout(StringIO()),
+                    patch("lib.localbackup.cli.scheduler.status", return_value={"app": "sampleapp"}),
+                ):
+                    self.assertEqual(main(["--config", str(config_path), "status", "sampleapp", "--json"]), 0)
+                with (
+                    redirect_stdout(StringIO()),
+                    patch("lib.localbackup.cli.scheduler.stop", return_value={"app": "sampleapp"}),
+                ):
+                    self.assertEqual(main(["stop", "sampleapp", "--json"]), 0)
+                output = StringIO()
+                with redirect_stdout(output), patch("lib.localbackup.cli.app_lock", return_value=nullcontext()):
+                    self.assertEqual(main(["--config", str(config_path), "restore", "sampleapp", "--bundle", str(root / "archive.zip"), "--json"]), 0)
+                self.assertIn('"app": "sampleapp"', output.getvalue())
+            finally:
+                apps.__path__.remove(str(root))
+                sys.modules.pop("lib.localbackup.apps.sampleapp", None)
+                importlib.invalidate_caches()
+
     def test_alfred_archives_preserve_restore_layout_and_recent_sqlite_data(self):
         with tempfile.TemporaryDirectory(prefix="localbackup-test-") as temporary:
             home = Path(temporary)

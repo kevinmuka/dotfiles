@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 import tomllib
@@ -10,18 +10,15 @@ import tomllib
 from .common import BackupError
 
 
-APPS = ("alfred", "bartender")
 WEEKDAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
 DEFAULT_ROOT_RELATIVE = Path(".backups")
 DEFAULT_ROOT = "~/" + DEFAULT_ROOT_RELATIVE.as_posix()
-DEFAULT_SUBDIRS = {
-    "alfred": "apps/customization/alfred/preferences",
-    "bartender": "apps/customization/bartender",
-}
 
 
 def default_output_dir(app: str, home: Path | None = None) -> Path:
-    return (home or Path.home()) / DEFAULT_ROOT_RELATIVE / DEFAULT_SUBDIRS[app]
+    from .apps import discover
+
+    return (home or Path.home()) / DEFAULT_ROOT_RELATIVE / discover()[app].default_subdir
 
 
 @dataclass(frozen=True)
@@ -43,7 +40,7 @@ class AppConfig:
     output_dir: Path
     keep: int
     schedule: Schedule
-    preferences_source: Path | None = None
+    options: dict[str, object] = field(default_factory=dict)
 
 
 def default_path() -> Path:
@@ -51,31 +48,14 @@ def default_path() -> Path:
 
 
 def example() -> str:
-    return '''# localbackup creates local archives. It never sends them to the cloud.
+    from .apps import discover
+
+    header = '''# localbackup creates local archives. It never sends them to the cloud.
 # Run "localbackup start all" to make these schedules active.
 
 [storage]
-root_dir = "~/.backups"
-
-[alfred]
-subdir = "apps/customization/alfred/preferences"
-keep = 12
-# preferences_source = "~/Library/Application Support/Alfred/Alfred.alfredpreferences"
-
-[alfred.schedule]
-frequency = "weekly" # daily, weekly, or off
-weekday = "monday"   # used only for weekly schedules
-time = "03:00"       # 24-hour local time
-
-[bartender]
-subdir = "apps/customization/bartender"
-keep = 12
-
-[bartender.schedule]
-frequency = "weekly"
-weekday = "monday"
-time = "03:15"
-'''
+root_dir = "~/.backups"'''
+    return header + "\n\n" + "\n\n".join(app.example_config for app in discover().values()) + "\n"
 
 
 def _table(value: object, where: str) -> dict[str, object]:
@@ -90,7 +70,7 @@ def _keys(table: dict[str, object], allowed: set[str], where: str) -> None:
         raise BackupError(f"Unknown {where} setting: {', '.join(sorted(unknown))}")
 
 
-def _path(value: object, where: str) -> Path:
+def path_setting(value: object, where: str) -> Path:
     if not isinstance(value, str) or not value:
         raise BackupError(f"{where} must be a nonempty path")
     path = Path(value).expanduser()
@@ -109,6 +89,9 @@ def _subdir(value: object, where: str) -> Path:
 
 
 def load(path: Path | None = None) -> dict[str, AppConfig]:
+    from .apps import discover
+
+    apps = discover()
     path = (path or default_path()).expanduser()
     if path.exists():
         if not path.is_file() or path.is_symlink():
@@ -119,18 +102,16 @@ def load(path: Path | None = None) -> dict[str, AppConfig]:
             raise BackupError(f"Could not read configuration: {error}") from error
     else:
         raw = {}
-    _keys(raw, {*APPS, "storage"}, "top-level")
+    _keys(raw, {*apps, "storage"}, "top-level")
     storage = _table(raw.get("storage", {}), "storage")
     _keys(storage, {"root_dir"}, "storage")
-    root = _path(storage.get("root_dir", DEFAULT_ROOT), "storage.root_dir")
+    root = path_setting(storage.get("root_dir", DEFAULT_ROOT), "storage.root_dir")
     result = {}
-    for app in APPS:
+    for app, plugin in apps.items():
         table = _table(raw.get(app, {}), app)
-        allowed = {"subdir", "keep", "schedule"}
-        if app == "alfred":
-            allowed.add("preferences_source")
+        allowed = {"subdir", "keep", "schedule", *plugin.config_keys}
         _keys(table, allowed, app)
-        output_dir = root / _subdir(table.get("subdir", DEFAULT_SUBDIRS[app]), f"{app}.subdir")
+        output_dir = root / _subdir(table.get("subdir", plugin.default_subdir), f"{app}.subdir")
         keep = table.get("keep", 12)
         if isinstance(keep, bool) or not isinstance(keep, int) or keep < 1:
             raise BackupError(f"{app}.keep must be a positive integer")
@@ -138,24 +119,22 @@ def load(path: Path | None = None) -> dict[str, AppConfig]:
         _keys(schedule_table, {"frequency", "weekday", "time"}, f"{app}.schedule")
         frequency = schedule_table.get("frequency", "weekly")
         weekday = schedule_table.get("weekday", "monday")
-        clock = schedule_table.get("time", "03:00" if app == "alfred" else "03:15")
+        clock = schedule_table.get("time", plugin.default_time)
         if frequency not in ("daily", "weekly", "off"):
             raise BackupError(f"{app}.schedule.frequency must be daily, weekly, or off")
         if weekday not in WEEKDAYS:
             raise BackupError(f"{app}.schedule.weekday must be an English weekday")
         if not isinstance(clock, str) or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", clock):
             raise BackupError(f"{app}.schedule.time must be HH:MM in 24-hour format")
-        source = table.get("preferences_source")
         result[app] = AppConfig(
             output_dir=output_dir,
             keep=keep,
             schedule=Schedule(frequency, clock, weekday),
-            preferences_source=_path(source, "alfred.preferences_source") if source is not None else None,
+            options=plugin.parse_config(table),
         )
-    locations = (
-        result["alfred"].output_dir,
-        result["alfred"].output_dir.parent / "workflow-data",
-        result["bartender"].output_dir,
+    locations = tuple(
+        directory for name, plugin in apps.items()
+        for _, directory, _, _ in plugin.archive_sources(result[name])
     )
     if len(set(locations)) != len(locations):
         raise BackupError("Application archive folders must be distinct")

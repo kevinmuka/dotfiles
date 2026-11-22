@@ -6,9 +6,10 @@ optional user LaunchAgents. It does not contact a cloud service. Run
 
 The launcher is `~/.config/scripts/localbackup` when the dotfiles are installed.
 The implementation lives in `lib/localbackup/`. Application modules are under
-`lib/localbackup/apps/`; shared archive validation, configuration, restore, scheduling, and CLI
-modules stay at the package root. The initial applications are `alfred` and
-`bartender`.
+`lib/localbackup/apps/`; shared archive validation, configuration, restore,
+scheduling, and CLI modules stay at the package root. The initial applications
+are `alfred` and `bartender`. The command discovers application modules by
+filename instead of maintaining an app-name list in the shared code.
 
 ```sh
 localbackup list
@@ -167,12 +168,35 @@ apply while the corresponding app is running. Reopen the app afterward and
 check its settings; permissions and Keychain items may need to be granted
 again.
 
-The Zsh completion is static and offline, with the same conditional menu
-colors as macbackup. Reload an existing shell after installation, or source
-`~/.zsh/integrations/localbackup.zsh` to register it. After an app is selected,
-completion and `--help` show only options valid
-for that app. A new module must register its own options explicitly; it does
-not inherit Alfred or Bartender restore flags.
+The Zsh completion uses the same conditional menu colors as macbackup. Reload
+an existing shell after installation, or source
+`~/.zsh/integrations/localbackup.zsh` to register it. It asks the local
+`localbackup --completion-spec` metadata path for app names and options. This
+starts Python but does not read the TOML, run a backup, use launchctl, or access
+the network. After an app is selected, completion and `--help` show only its
+options. A newly added module appears without editing the completion file.
+
+## Adding an application
+
+Add one public Python module, `lib/localbackup/apps/NAME.py`, and export an
+`APP` value built with `App` from `._api`. The module filename and `APP.name`
+must match. Modules whose names begin with `_` are reserved for shared helpers.
+The descriptor supplies a default archive subfolder, schedule time, TOML
+example, backup and restore callables, and archive source definitions. Optional
+`Option` entries describe app-specific `now` and `restore` flags for both the
+parser and Zsh completion. `config_keys` and `parse_config` let the same module
+validate its own extra TOML fields; common storage, retention, and schedule
+fields are handled centrally. An app can declare conflicting LaunchAgent
+labels for schedule preflight and status.
+
+The module's backup callable decides which app files and settings to include,
+creates and validates its archive, and returns archive paths. Its restore
+callable validates the selected archive and applies changes only when `--apply`
+is set. The module must import without starting a backup or contacting the app,
+because `list`, help, and completion discover modules. Adding an app needs no
+edits to the CLI, configuration parser, scheduler, archive listing, or Zsh
+completion. Test its backup contents and a restore preview with synthetic data
+before using it on live settings.
 
 ## Local security and cloud transfer
 

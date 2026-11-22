@@ -13,9 +13,6 @@ from .common import BackupError, restricted_directory
 from .config import AppConfig
 
 
-LEGACY_ALFRED_LABEL = "local.kevinmuka.alfred.backuppreferences"
-
-
 def label(app: str) -> str:
     return f"com.localbackup.user{os.getuid()}.{app}"
 
@@ -56,8 +53,11 @@ def agent(app: str, config: AppConfig, launcher: Path, config_path: Path, python
 
 
 def preflight(app: str, config: AppConfig, launcher: Path, config_path: Path) -> None:
-    if app == "alfred" and _loaded(LEGACY_ALFRED_LABEL):
-        raise BackupError("Alfred's existing workflow schedule is loaded; stop it before enabling localbackup")
+    from .apps import discover
+
+    for name in discover()[app].conflicting_agents.values():
+        if _loaded(name):
+            raise BackupError(f"A conflicting schedule is loaded: {name}; stop it before enabling localbackup")
     if not launcher.is_file():
         raise BackupError(f"localbackup launcher is unavailable: {launcher}")
     agent(app, config, launcher, config_path)
@@ -123,6 +123,8 @@ def stop(app: str) -> dict[str, object]:
 
 
 def status(app: str, config: AppConfig, launcher: Path, config_path: Path) -> dict[str, object]:
+    from .apps import discover
+
     path = plist_path(app)
     actual = None
     if path.is_file() and not path.is_symlink():
@@ -132,7 +134,7 @@ def status(app: str, config: AppConfig, launcher: Path, config_path: Path) -> di
             pass
     loaded = _loaded(label(app))
     expected = agent(app, config, launcher, config_path) if config.schedule.frequency != "off" else None
-    return {
+    result = {
         "app": app,
         "loaded": loaded,
         "installed": path.exists(),
@@ -140,5 +142,6 @@ def status(app: str, config: AppConfig, launcher: Path, config_path: Path) -> di
         "time": config.schedule.time,
         "weekday": config.schedule.weekday if config.schedule.frequency == "weekly" else None,
         "matches_config": actual == expected if actual is not None else False,
-        "legacy_alfred_loaded": _loaded(LEGACY_ALFRED_LABEL) if app == "alfred" else False,
     }
+    result.update({key: _loaded(name) for key, name in discover()[app].conflicting_agents.items()})
+    return result

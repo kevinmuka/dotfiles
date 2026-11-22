@@ -15,6 +15,7 @@ from ..common import (
 )
 from ..config import default_output_dir
 from ..archive import validate_zip
+from ._api import App, Option
 
 
 DATA_ROOT = "Alfred Workflow Data Backup"
@@ -163,3 +164,62 @@ def backup(
         {"kind": "preferences", "path": str(preferences_file)},
         {"kind": "workflow_data", "path": str(data_file)},
     ]
+
+
+def _run_backup(settings, args):
+    return backup(
+        preferences_dir=getattr(args, "output_dir", None) or settings.output_dir,
+        preferences_source=getattr(args, "preferences_source", None)
+        or settings.options.get("preferences_source"),
+        keep=settings.keep if getattr(args, "keep", None) is None else args.keep,
+    )
+
+
+def _run_restore(settings, args):
+    from ..restore import restore_alfred
+
+    return restore_alfred(
+        settings, preferences=args.preferences,
+        workflow_data=args.workflow_data, apply=args.apply,
+    )
+
+
+def _archive_sources(settings):
+    return (
+        ("preferences", settings.output_dir, PREFERENCES_PREFIX, ".zip"),
+        ("workflow_data", settings.output_dir.parent / "workflow-data", DATA_PREFIX, ".zip"),
+    )
+
+
+def _parse_config(table):
+    from ..config import path_setting
+
+    value = table.get("preferences_source")
+    return {"preferences_source": path_setting(value, "alfred.preferences_source")} if value is not None else {}
+
+
+APP = App(
+    name="alfred",
+    default_subdir="apps/customization/alfred/preferences",
+    default_time="03:00",
+    example_config='''[alfred]
+subdir = "apps/customization/alfred/preferences"
+keep = 12
+# preferences_source = "~/Library/Application Support/Alfred/Alfred.alfredpreferences"
+
+[alfred.schedule]
+frequency = "weekly" # daily, weekly, or off
+weekday = "monday"   # used only for weekly schedules
+time = "03:00"       # 24-hour local time''',
+    backup=_run_backup,
+    restore=_run_restore,
+    archive_sources=_archive_sources,
+    now_options=(Option("--preferences-source", "Alfred Preferences source folder"),),
+    restore_options=(
+        Option("--preferences", "Alfred Preferences .zip archive", "archive"),
+        Option("--workflow-data", "Alfred Workflow Data .zip archive", "archive"),
+    ),
+    config_keys=("preferences_source",),
+    parse_config=_parse_config,
+    conflicting_agents={"legacy_alfred_loaded": "local.kevinmuka.alfred.backuppreferences"},
+)

@@ -101,13 +101,9 @@ def _archive(path: Path, suffix: str) -> Path:
 
 
 def archives(app: str, config: AppConfig) -> list[dict[str, str]]:
-    if app == "alfred":
-        sources = (
-            ("preferences", config.output_dir, alfred.PREFERENCES_PREFIX, ".zip"),
-            ("workflow_data", config.output_dir.parent / "workflow-data", alfred.DATA_PREFIX, ".zip"),
-        )
-    else:
-        sources = (("settings", config.output_dir, bartender.ARCHIVE_PREFIX, ".zip"),)
+    from .apps import discover
+
+    sources = discover()[app].archive_sources(config)
     result = []
     for kind, directory, prefix, suffix in sources:
         if not directory.is_dir():
@@ -144,7 +140,7 @@ def restore_alfred(
     targets = []
     if preferences is not None:
         source = _archive(preferences, ".zip")
-        target = config.preferences_source or base / alfred.PREFERENCES_ROOT
+        target = config.options.get("preferences_source") or base / alfred.PREFERENCES_ROOT
         targets.append(("preferences", source, target))
     if workflow_data is not None:
         source = _archive(workflow_data, ".zip")
