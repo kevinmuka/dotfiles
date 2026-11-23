@@ -1,6 +1,6 @@
 #compdef localbackup
 
-# Read app metadata locally; the metadata command never loads config or runs a backup.
+# Read app metadata locally. Only archive value completion loads configuration.
 local curcontext="$curcontext" context state state_descr line
 local -A opt_args
 local -a command_choices app_names app_specs fields
@@ -45,6 +45,25 @@ _localbackup_absolute_path() {
   fi
 }
 
+_localbackup_restore_archive() {
+  local flag="${argv[-1]}"
+  shift -p
+  local -a archive_info archive_dirs config_arg
+  [[ -n "$completion_config" ]] && config_arg=("$completion_config")
+  archive_info=("${(@0)$(PYTHONDONTWRITEBYTECODE=1 "$completion_launcher" \
+    --completion-archive "$selected_app" "$flag" "${config_arg[@]}" 2>/dev/null)}")
+  [[ -n "${archive_info[1]}" && -n "${archive_info[2]}" ]] || return 1
+  # Sort archive matches by modification time and preserve that order in the menu.
+  local pattern="*${(b)archive_info[2]}(.om)"
+  if [[ "$PREFIX" == /* || "$PREFIX" == \~* ]]; then
+    _path_files "$@" -o nosort -g "$pattern"
+  elif [[ "/$PREFIX/" != */../* ]]; then
+    compset -P './'
+    archive_dirs=("${archive_info[1]}")
+    _path_files "$@" -o nosort -W archive_dirs -g "$pattern"
+  fi
+}
+
 if (( CURRENT == 2 )) && [[ "$PREFIX" == -* && "$PREFIX" != *=* ]]; then
   local -a global_options
   global_options=(
@@ -57,7 +76,7 @@ if (( CURRENT == 2 )) && [[ "$PREFIX" == -* && "$PREFIX" != *=* ]]; then
   return
 fi
 
-_arguments -C -A '-*' \
+_arguments -0 -C -A '-*' \
   '(- *)'{-h,--help}'[command help]' \
   '(- *)--version[installed version]' \
   '--config=[alternate TOML configuration]:absolute file:_localbackup_absolute_path' \
@@ -69,6 +88,7 @@ case "$state" in
     _describe -t commands 'localbackup command' command_choices
     ;;
   arguments)
+    local completion_config="${(Q)opt_args[--config]}"
     local selected_app='' token
     for token in "${line[@]}"; do
       if (( ${app_names[(Ie)$token]} )); then
@@ -99,7 +119,7 @@ case "$state" in
           case "$fields[5]" in
             path) run_options+=("$fields[4]=[$fields[6]]:absolute folder:_localbackup_absolute_path -/") ;;
             file) run_options+=("$fields[4]=[$fields[6]]:file:_files") ;;
-            archive) run_options+=("$fields[4]=[$fields[6]]:archive:_files -g '*.zip'") ;;
+            archive) run_options+=("$fields[4]=[$fields[6]]:archive:_path_files -o nosort -g '*.zip(.om)'") ;;
             int) run_options+=("$fields[4]=[$fields[6]]:count:") ;;
             text) run_options+=("$fields[4]=[$fields[6]]:value:") ;;
             bool) run_options+=("$fields[4][$fields[6]]") ;;
@@ -109,13 +129,13 @@ case "$state" in
           "${run_options[@]}" \
           '1:application:_localbackup_apps_or_all'
         ;;
-      start)
+      start|stop)
         _arguments \
           '(- *)'{-h,--help}'[show help]' \
           '--json[JSON output]' \
           '1:application:_localbackup_apps_or_all'
         ;;
-      stop|status|archives)
+      status|archives)
         _arguments \
           '(- *)'{-h,--help}'[show help]' \
           '--json[JSON output]' \
@@ -134,7 +154,7 @@ case "$state" in
           case "$fields[5]" in
             path) restore_options+=("$fields[4]=[$fields[6]]:absolute folder:_localbackup_absolute_path -/") ;;
             file) restore_options+=("$fields[4]=[$fields[6]]:file:_files") ;;
-            archive) restore_options+=("$fields[4]=[$fields[6]]:archive:_files -g '*.zip'") ;;
+            archive) restore_options+=("$fields[4]=[$fields[6]]:archive:_localbackup_restore_archive $fields[4]") ;;
             int) restore_options+=("$fields[4]=[$fields[6]]:count:") ;;
             text) restore_options+=("$fields[4]=[$fields[6]]:value:") ;;
             bool) restore_options+=("$fields[4][$fields[6]]") ;;

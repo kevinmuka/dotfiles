@@ -38,6 +38,7 @@ KEEP = {
     RESTORE_DIALOG, RESTORE_SCRIPT, RESTORE_TRIGGER, RESTORE_NOTIFICATION,
 }
 BRIDGE = '${alfred_preferences}/workflows/${alfred_workflow_uid}/localbackup_bridge.py'
+BUNDLE_ID = "local.kevinmuka.alfred.backuppreferences"
 
 
 def connection(uid: str, output: str | None = None) -> dict:
@@ -51,8 +52,16 @@ def run_script(command: str, argument: str = "") -> str:
     return f'/usr/bin/python3 -B "{BRIDGE}" {command}{argument}'
 
 
+def integrated(info: dict) -> bool:
+    managed = {START_SCRIPT, NOW_SCRIPT, STOP_SCRIPT, STATUS, RESTORE, RESTORE_SCRIPT}
+    return info.get("bundleid") == BUNDLE_ID and managed <= {
+        item["uid"] for item in info["objects"]
+        if BRIDGE in item.get("config", {}).get("script", "")
+    }
+
+
 def transform(info: dict) -> dict:
-    if info.get("bundleid") != "local.kevinmuka.alfred.backuppreferences":
+    if info.get("bundleid") != BUNDLE_ID:
         raise ValueError("Unexpected Alfred workflow bundle ID")
     objects = {item["uid"]: item for item in info["objects"]}
     missing = KEEP - objects.keys()
@@ -130,15 +139,23 @@ def install(workflow: Path) -> Path:
         raise ValueError("Expected a regular installed workflow folder and info.plist")
     source = Path(__file__).resolve().parents[2] / "lib/localbackup/integrations/alfred_workflow_bridge.py"
     original = plistlib.loads(info_path.read_bytes())
-    patched = transform(original)
-    prefs_path = workflow / "prefs.plist"
-    if prefs_path.is_symlink():
-        raise ValueError("Workflow preferences must not be a symbolic link")
-    prefs = plistlib.loads(prefs_path.read_bytes()) if prefs_path.exists() else {}
-    prefs = {key: value for key, value in prefs.items() if key in {"backup_keyword", "confirm_restore"}}
-    backup_root = Path(tempfile.mkdtemp(prefix="alfred-workflow-before-localbackup-"))
-    shutil.copytree(workflow, backup_root / workflow.name)
+    patched = None if integrated(original) else transform(original)
     bridge_path = workflow / "localbackup_bridge.py"
+    if bridge_path.is_symlink():
+        raise ValueError("Workflow bridge must not be a symbolic link")
+    if patched is not None:
+        prefs_path = workflow / "prefs.plist"
+        if prefs_path.is_symlink():
+            raise ValueError("Workflow preferences must not be a symbolic link")
+        prefs = plistlib.loads(prefs_path.read_bytes()) if prefs_path.exists() else {}
+        prefs = {key: value for key, value in prefs.items() if key in {"backup_keyword", "confirm_restore"}}
+    backup_root = Path(tempfile.mkdtemp(prefix="alfred-workflow-before-localbackup-"))
+    backup = backup_root / workflow.name
+    shutil.copytree(workflow, backup)
+    if patched is None:
+        # Refresh the adapter without changing the workflow graph or preferences.
+        shutil.copy2(source, bridge_path)
+        return backup
     with tempfile.NamedTemporaryFile(prefix=".info-localbackup-", dir=workflow, delete=False) as stream:
         pending = Path(stream.name)
         plistlib.dump(patched, stream)
@@ -156,7 +173,7 @@ def install(workflow: Path) -> Path:
     finally:
         pending.unlink(missing_ok=True)
         pending_prefs.unlink(missing_ok=True)
-    return backup_root / workflow.name
+    return backup
 
 
 def main() -> None:

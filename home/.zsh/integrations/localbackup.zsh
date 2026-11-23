@@ -11,6 +11,7 @@
   if [[ -t 1 && "$TERM" != dumb && -z "$NO_COLOR" ]]; then
     zstyle ':completion:*:*:localbackup:*' list-colors '=(#b)([a-z-]#)(*)=0=1;34=2'
   fi
+  unfunction _localbackup 2>/dev/null
   autoload -Uz _localbackup
   if (( $+functions[compdef] )); then
     compdef _localbackup localbackup

@@ -187,9 +187,10 @@ time = "03:30"''',
 )
 ```
 
-The CLI supplies `args.output_dir`, `args.keep`, and the module's `now_options`
-as `None` when absent, including for `start`. It supplies `args.apply` and the
-module's `restore_options` for `restore`. A `backup` callback returns archive
+The CLI passes `args.output_dir` and `args.keep` to backup callbacks. Unset
+value options are `None`, and unset boolean options are `False`, including
+during `start`. Restore callbacks receive `args.apply` and the module's
+`restore_options`. A `backup` callback returns archive
 records; a `restore` callback returns a plan or result dictionary. The app
 module owns source selection, archive validation, restore safety, and any
 app-specific configuration. `archive_sources` gives `localbackup archives`
@@ -225,7 +226,19 @@ now_options=(
 ```
 
 `path` accepts a directory path, `file` any file path, `archive` a path with
-ZIP completion, `int` an integer, and `text` a string. `bool` is a switch:
+archive completion, `int` an integer, and `text` a string. For an `archive`
+option on `restore`, the CLI resolves relative names inside the directory
+returned by `archive_sources`. Zsh uses that source's extension and the
+active TOML to suggest files, newest modification time first. The archive
+listing also applies the filename prefix. For modules with one source, the CLI
+uses it automatically. For modules with multiple sources, set `archive_kind`
+on each archive option
+to the corresponding kind returned by `archive_sources`, for example
+`Option("--profile-archive", "Profile ZIP", "archive", archive_kind="profile")`.
+The callback receives a `Path` and can validate it as usual. Absolute paths
+and paths starting with a tilde are also accepted.
+
+`bool` is a switch:
 present means `True`, absent means `False`, and it takes no value. The parser
 does **not** validate file existence, archive contents, numeric ranges, or
 business rules; the module must do that before making changes. For example,
@@ -302,11 +315,12 @@ localbackup --completion-spec
 localbackup --config /absolute/path/test-config.toml now exampleapp --json
 localbackup --config /absolute/path/test-config.toml archives exampleapp --json
 localbackup --config /absolute/path/test-config.toml restore exampleapp \
-  --archive "/path/to/ExampleApp Settings.zip" --json
+  --archive "ExampleApp Settings YYYY.MM.DD at HH.MM.SS.zip" --json
 ```
 
-Use a disposable home and app data for the first backup and restore. Inspect
-the ZIP root, README, file list, CRC, and permissions. Compare restored files
+Use the archive name returned by the preceding listing in the restore
+example. Use a disposable home and app data for the first backup and restore.
+Inspect the ZIP root, README, file list, CRC, and permissions. Compare restored files
 with the source. Verify that the preview leaves the destination untouched,
 that `--apply` keeps the previous settings, and that failures leave a usable
 previous copy. Test missing, empty, unreadable, symlinked, and malformed input;
@@ -378,17 +392,20 @@ Once its archive and restore have been verified, `localbackup start exampleapp`
 performs one backup and installs its weekly LaunchAgent from the TOML schedule.
 `status exampleapp` reports the agent; `now exampleapp` makes an extra backup
 without changing the schedule; `stop exampleapp` removes the agent but keeps
-archives. `now all` and `start all` include the new module automatically, so
-review its source and defaults before using those aggregate commands. `restore`
+archives. `stop` requires an app name or explicit `all`. `now all` and
+`start all` include the new module automatically. Review its source and
+defaults before using those aggregate commands. `restore`
 requires explicit `--apply` to replace files. Scheduled runs use the launcher
 and Python interpreter recorded by the LaunchAgent; after moving the checkout
 or interpreter, run `start exampleapp` again to update it.
 
 Zsh completion discovers the module through the launcher's read-only
-`--completion-spec` path. The completion invokes Python locally on Tab but does
-not read the TOML or run backups. Install the updated launcher, package, and
-completion together; adding a module to a different checkout will not change
-the installed command's app list.
+`--completion-spec` path. App and flag discovery does not read TOML. Completing
+a restore archive reads the active TOML and lists matching files in the
+directory for that flag, newest first. Verify both the default and a test
+configuration passed with `--config`, especially for modules with multiple
+archive sources. Install the launcher, package, and completion together.
+The installed launcher discovers modules from the checkout it resolves into.
 
 Finally, inspect macbackup's separate source-selection and plain/private
 classification for the new archive path before transferring it to cloud

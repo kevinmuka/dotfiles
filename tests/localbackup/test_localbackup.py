@@ -1,15 +1,18 @@
 """Recovery-format checks using disposable Alfred and Bartender data."""
 
 from contextlib import closing, nullcontext, redirect_stderr, redirect_stdout
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 import importlib
+import os
 import plistlib
 import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from zipfile import ZipFile, ZipInfo
@@ -117,8 +120,12 @@ APP = App(
                     self.assertEqual(main(["stop", "sampleapp", "--json"]), 0)
                 output = StringIO()
                 with redirect_stdout(output), patch("lib.localbackup.cli.app_lock", return_value=nullcontext()):
-                    self.assertEqual(main(["--config", str(config_path), "restore", "sampleapp", "--bundle", str(root / "archive.zip"), "--json"]), 0)
+                    self.assertEqual(main([
+                        "--config", str(config_path), "restore", "sampleapp",
+                        "--bundle", "Sample Backup.zip", "--json",
+                    ]), 0)
                 self.assertIn('"app": "sampleapp"', output.getvalue())
+                self.assertIn(str(settings.output_dir / "Sample Backup.zip"), output.getvalue())
             finally:
                 apps.__path__.remove(str(root))
                 sys.modules.pop("lib.localbackup.apps.sampleapp", None)
@@ -208,6 +215,48 @@ APP = App(
             status = main(["list", "--json"])
         self.assertEqual(status, 0)
         self.assertEqual(output.getvalue().strip(), '{"apps": ["alfred", "bartender"]}')
+
+    def test_stop_requires_an_explicit_app_or_all(self):
+        with (
+            patch.object(scheduler, "stop", side_effect=lambda app: {"app": app}) as stop,
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+        ):
+            with self.assertRaises(SystemExit) as missing_target:
+                main(["stop"])
+            self.assertEqual(missing_target.exception.code, 2)
+            stop.assert_not_called()
+
+            self.assertEqual(main(["stop", "alfred"]), 0)
+            stop.assert_called_once_with("alfred")
+            stop.reset_mock()
+
+            self.assertEqual(main(["stop", "all"]), 0)
+            self.assertEqual([call.args[0] for call in stop.call_args_list], ["alfred", "bartender"])
+
+    def test_restore_resolves_each_relative_archive_from_its_configured_folder(self):
+        with tempfile.TemporaryDirectory(prefix="localbackup-restore-paths-") as temporary:
+            root = Path(temporary)
+            settings = root / "config.toml"
+            settings.write_text(f'[storage]\nroot_dir = "{root}"\n[alfred]\nsubdir = "alfred custom/prefs"\n')
+            sources = (
+                (root / "alfred custom/prefs/Backup 1.zip", "Alfred.alfredpreferences/settings"),
+                (root / "alfred custom/workflow-data/Backup 1.zip", "Alfred Workflow Data Backup/Workflow Data/example/settings"),
+            )
+            for path, member in sources:
+                path.parent.mkdir(parents=True)
+                with ZipFile(path, "w") as archive:
+                    archive.writestr(member, "example")
+            output = StringIO()
+            args = ["--config", str(settings), "restore", "alfred"]
+            with redirect_stdout(output), patch("lib.localbackup.cli.app_lock", return_value=nullcontext()):
+                self.assertEqual(main([*args, "--preferences", "Backup 1.zip", "--workflow-data", "Backup 1.zip", "--json"]), 0)
+                for path, _ in sources:
+                    self.assertIn(str(path), output.getvalue())
+                output.truncate(0)
+                output.seek(0)
+                self.assertEqual(main([*args, "--preferences", "../workflow-data/Backup 1.zip", "--json"]), 1)
+                self.assertIn("must stay inside", output.getvalue())
 
     def test_app_commands_only_accept_their_own_options(self):
         for app, available, unavailable in (
@@ -371,6 +420,28 @@ APP = App(
                 restore.restore_alfred(
                     settings, preferences=old, workflow_data=None, apply=False, home=home,
                 )
+
+    def test_archives_keep_newest_first_when_local_clock_goes_back(self):
+        with tempfile.TemporaryDirectory(prefix="localbackup-order-") as temporary:
+            root = Path(temporary)
+            older = root / "preferences/Alfred Backup A.zip"
+            newer = root / "workflow-data/Alfred Workflow Data Z.zip"
+            for path, hour, minute in ((older, 0, 55), (newer, 1, 5)):
+                path.parent.mkdir()
+                path.touch()
+                timestamp = datetime(2026, 10, 25, hour, minute, tzinfo=timezone.utc).timestamp()
+                os.utime(path, (timestamp, timestamp))
+            settings = config.AppConfig(
+                output_dir=older.parent, keep=12, schedule=config.Schedule("off", "03:00", "monday"),
+            )
+            try:
+                with patch.dict(os.environ, {"TZ": "Europe/Rome"}):
+                    time.tzset()
+                    listed = restore.archives("alfred", settings)
+                    self.assertEqual([item["path"] for item in listed], [str(newer), str(older)])
+                    self.assertLess(listed[0]["modified"], listed[1]["modified"])
+            finally:
+                time.tzset()
 
     def test_bartender_restore_applies_database_and_keeps_previous_copy(self):
         with tempfile.TemporaryDirectory(prefix="localbackup-restore-") as temporary:

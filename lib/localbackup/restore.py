@@ -16,6 +16,7 @@ from zipfile import ZipFile
 
 from . import progress
 from .apps import alfred, bartender
+from .apps._api import App, Option
 from .common import BackupError, check_zip, restricted_directory
 from .config import AppConfig
 
@@ -108,18 +109,49 @@ def _archive(path: Path, suffix: str) -> Path:
     return path
 
 
+def archive_location(app: App, settings: AppConfig, option: Option) -> tuple[Path, str]:
+    sources = app.archive_sources(settings)
+    matches = [
+        (directory, suffix) for kind, directory, _, suffix in sources
+        if kind == option.archive_kind or (option.archive_kind is None and len(sources) == 1)
+    ]
+    if len(matches) != 1:
+        raise BackupError(f"{app.name} {option.flag} must select one archive kind")
+    return matches[0]
+
+
+def archive_argument(app: App, settings: AppConfig, option: Option, value: Path) -> Path:
+    path = value.expanduser()
+    if path.is_absolute():
+        return path
+    directory, _ = archive_location(app, settings, option)
+    candidate = directory / path
+    if ".." in path.parts or not candidate.resolve().is_relative_to(directory.resolve()):
+        raise BackupError(f"{option.flag} must stay inside {directory}")
+    return candidate
+
+
 def archives(app: str, config: AppConfig) -> list[dict[str, str]]:
     from .apps import discover
 
     sources = discover()[app].archive_sources(config)
-    result = []
+    matches = []
     for kind, directory, prefix, suffix in sources:
         if not directory.is_dir():
             continue
         for path in directory.glob(f"{prefix}*{suffix}"):
-            if path.is_file() and not path.is_symlink():
-                result.append({"kind": kind, "path": str(path), "modified": datetime.fromtimestamp(path.stat().st_mtime).isoformat()})
-    return sorted(result, key=lambda item: item["modified"], reverse=True)
+            try:
+                metadata = path.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(metadata.st_mode):
+                matches.append((metadata, path, kind))
+    # Sort before formatting local times, which can repeat when DST ends.
+    matches.sort(key=lambda item: (-item[0].st_mtime_ns, item[1]))
+    return [
+        {"kind": kind, "path": str(path), "modified": datetime.fromtimestamp(metadata.st_mtime).isoformat()}
+        for metadata, path, kind in matches
+    ]
 
 
 def _replace_tree(target: Path, staged: Path, token: str) -> Path | None:

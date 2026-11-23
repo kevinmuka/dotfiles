@@ -88,22 +88,24 @@ infer success from the presence of some `results`.
 The customized Alfred Backup Preferences workflow can act as a UI for this
 CLI. Run the versioned [installer](../../tools/localbackup/install_alfred_workflow.py)
 against its installed workflow folder. The installer saves a complete copy in
-a temporary folder, installs the [bridge](../../lib/localbackup/integrations/alfred_workflow_bridge.py),
+a temporary folder. On the first conversion, it installs the
+[bridge](../../lib/localbackup/integrations/alfred_workflow_bridge.py)
 and replaces the workflow's backup, restore, schedule, stop, and status scripts
-with CLI calls. The workflow keeps only its keyword and restore confirmation
-settings. `~/.config/localbackup/config.toml` is the sole source for archive
-locations, retention, and schedules. For example:
+with CLI calls. The converted workflow uses its own keyword and restore
+confirmation settings. Archive locations, retention, and schedules come from
+`~/.config/localbackup/config.toml`. Run this from the dotfiles checkout
+that contains the installer.
 
 ```sh
 python3 tools/localbackup/install_alfred_workflow.py \
   --workflow "$HOME/Library/Application Support/Alfred/Alfred.alfredpreferences/workflows/user.workflow.YOUR_ID"
 ```
 
-The installed workflow is outside Git. Re-run the installer after replacing
-that workflow, and confirm its keyword still matches your preference. The
-bridge calls the `~/.config/scripts/localbackup` installation, so check which
-permanent checkout that launcher resolves into before enabling its schedule.
-The installer does not start a LaunchAgent.
+Running the installer on an already converted workflow refreshes only the
+bridge. This preserves the workflow graph, its preferences, and additions such
+as Notificator. The installed workflow is outside Git. The bridge calls
+`~/.config/scripts/localbackup`, so changes to the CLI become available as soon
+as that installation is updated. The installer does not start a LaunchAgent.
 
 ## Alfred
 
@@ -215,7 +217,9 @@ app. A later configuration change needs another `start` to update the loaded
 agent; changing `frequency` to `off` in TOML does **not** unload an agent that
 is already running. Use `stop APP` for that. `localbackup now APP` creates
 one backup without changing any schedule. `localbackup stop APP` unloads and
-removes only localbackup's LaunchAgent; it keeps archives. `status` reports
+removes the app's localbackup LaunchAgent and keeps its archives. `stop`
+requires an app name or the explicit target `all`. A bare `status` or
+`archives` shows results for all apps. `status` reports
 whether the agent is loaded, whether its file is installed, and whether it
 matches the current TOML settings. A loaded calendar agent normally waits
 between runs; this does not mean a backup process is active.
@@ -245,20 +249,29 @@ removing a module does not remove a LaunchAgent already installed for it.
 ## Restore
 
 `localbackup archives APP` lists files matching the app's configured archive
-directories, filename prefixes, and extensions. Listing does not validate
-their contents. The built-in `restore` implementations validate and extract an
-archive into a temporary area and print the destination without replacing app
-data. Add `--apply` only after reviewing that plan and quitting the relevant
-app:
+directories, filename prefixes, and extensions. Each app's list is ordered by
+file modification time, newest first. Alfred's Restore menu uses the same
+order for preference ZIPs. To preview a restore, replace the example filenames
+below with the names from your archive list or select them with Tab. The
+preview validates the archives and shows the destination.
 
 ```sh
-localbackup restore alfred --preferences "/path/to/Alfred Backup.zip"
-localbackup restore alfred --preferences "/path/to/Alfred Backup.zip" --workflow-data "/path/to/Alfred Workflow Data.zip" --apply
-localbackup restore bartender --archive "/path/to/Bartender 7 Settings.zip"
-localbackup restore bartender --archive "/path/to/Bartender 7 Settings.zip" --apply
+localbackup restore alfred \
+  --preferences "Alfred Backup.zip" \
+  --workflow-data "Alfred Workflow Data.zip"
+localbackup restore bartender --archive "Bartender 7 Settings.zip"
 ```
 
-Alfred Preferences and Workflow Data can be restored separately or together.
+After reviewing the preview, quit the app and repeat the command with
+`--apply` to replace its settings. Alfred Preferences and Workflow Data can
+be restored separately or together. Supply a name or path after each flag
+you use. A relative path starts in the configured directory for that archive
+type. With the default config,
+Alfred preferences start in `~/.backups/apps/customization/alfred/preferences/`,
+Workflow Data starts in its sibling `workflow-data/`, and Bartender starts in
+`~/.backups/apps/customization/bartender/`. Use an absolute or tilde-prefixed
+path for a ZIP elsewhere, such as an archive downloaded from another Mac.
+
 Alfred restore validates archive paths and contents, stages the replacement,
 and keeps the previous settings beside the restored folders with a
 `.before-localbackup-<timestamp>` suffix. The configured
@@ -278,9 +291,14 @@ The Zsh completion uses the same conditional menu colors as macbackup. Reload
 an existing shell after installation, or source
 `~/.zsh/integrations/localbackup.zsh` to register it. It asks the local
 `localbackup --completion-spec` metadata path for app names and options. This
-starts Python but does not read the TOML, run a backup, use launchctl, or access
-the network. After an app is selected, completion and `--help` show only its
-options. A newly added module appears without editing the completion file.
+starts Python without reading TOML. For restore, press Tab after an archive flag or
+`--flag=` to list matching files in its configured directory, newest first,
+and insert a relative path. This lookup uses the active TOML, including an
+alternate file specified with `--config`. It suggests matching extensions;
+restore validates the chosen file. Completion runs no backup, restore,
+launchctl, or cloud operation. After an app is selected, completion and
+`--help` show only its options. A newly added module appears without editing
+the completion file.
 
 ## Adding an application
 

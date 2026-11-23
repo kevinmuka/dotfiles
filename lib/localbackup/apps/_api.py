@@ -17,6 +17,11 @@ class Option:
     flag: str
     help: str
     kind: str = "path"
+    archive_kind: str | None = None
+
+    @property
+    def destination(self) -> str:
+        return self.flag.removeprefix("--").replace("-", "_")
 
     def add_to(self, parser: argparse.ArgumentParser) -> None:
         if not re.fullmatch(r"--[a-z][a-z0-9-]*", self.flag):

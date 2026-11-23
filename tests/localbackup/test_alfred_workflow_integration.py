@@ -4,12 +4,13 @@ from contextlib import redirect_stdout
 from io import StringIO
 import json
 from pathlib import Path
+import plistlib
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from lib.localbackup.integrations import alfred_workflow_bridge as bridge
-from tools.localbackup.install_alfred_workflow import KEEP, transform
+from tools.localbackup.install_alfred_workflow import BACKUP_NOTIFICATION, KEEP, install, transform
 
 
 class AlfredWorkflowBridgeTests(unittest.TestCase):
@@ -48,8 +49,8 @@ class AlfredWorkflowBridgeTests(unittest.TestCase):
 
 
 class AlfredWorkflowInstallerTests(unittest.TestCase):
-    def test_converted_graph_has_one_backup_implementation(self):
-        info = {
+    def unconverted_graph(self):
+        return {
             "bundleid": "local.kevinmuka.alfred.backuppreferences",
             "objects": [{"uid": uid, "config": {}} for uid in KEEP],
             "uidata": {uid: {} for uid in KEEP},
@@ -62,13 +63,40 @@ class AlfredWorkflowInstallerTests(unittest.TestCase):
                 )
             ],
         }
-        result = transform(info)
+    def test_converted_graph_has_one_backup_implementation(self):
+        result = transform(self.unconverted_graph())
         self.assertEqual([item["variable"] for item in result["userconfigurationconfig"]], [
             "backup_keyword", "confirm_restore",
         ])
         scripts = [item["config"].get("script", "") for item in result["objects"]]
         self.assertEqual(sum("localbackup_bridge.py" in script for script in scripts), 6)
         self.assertFalse(any("launchctl" in script or "/usr/bin/ditto" in script for script in scripts))
+
+    def test_refresh_keeps_custom_notification_and_preferences(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workflow = root / "workflow"
+            workflow.mkdir()
+            backup_root = root / "backup"
+            backup_root.mkdir()
+            info = transform(self.unconverted_graph())
+            notification = next(item for item in info["objects"] if item["uid"] == BACKUP_NOTIFICATION)
+            notification["type"] = "alfred.workflow.action.script"
+            notification["config"] = {"script": './notificator "Backup complete"'}
+            files = {
+                "info.plist": plistlib.dumps(info, fmt=plistlib.FMT_BINARY),
+                "prefs.plist": plistlib.dumps({"backup_keyword": "backup", "notification_sound": "ping"}),
+                "notificator": b"custom notifier",
+            }
+            for name, content in files.items():
+                (workflow / name).write_bytes(content)
+            (workflow / "localbackup_bridge.py").write_text("old bridge")
+            with patch("tools.localbackup.install_alfred_workflow.tempfile.mkdtemp", return_value=str(backup_root)):
+                saved = install(workflow)
+            for name, content in files.items():
+                self.assertEqual((workflow / name).read_bytes(), content)
+            self.assertEqual((saved / "localbackup_bridge.py").read_text(), "old bridge")
+            self.assertIn(b"def main()", (workflow / "localbackup_bridge.py").read_bytes())
 
 
 if __name__ == "__main__":
