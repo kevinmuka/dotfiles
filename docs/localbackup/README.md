@@ -178,6 +178,10 @@ options. A newly added module appears without editing the completion file.
 
 ## Adding an application
 
+For a start-to-finish example, including a complete module, configuration,
+backup and restore checks, scheduling, completion, and deployment, see
+[Writing an application module](APP_MODULE_GUIDE.md).
+
 Add one public Python module, `lib/localbackup/apps/NAME.py`, and export an
 `APP` value built with `App` from `._api`. The module filename and `APP.name`
 must match. Modules whose names begin with `_` are reserved for shared helpers.
