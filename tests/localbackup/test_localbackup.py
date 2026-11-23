@@ -17,7 +17,7 @@ from zipfile import ZipFile, ZipInfo
 from lib.localbackup import apps, archive, config, restore, scheduler
 from lib.localbackup.apps import alfred, bartender
 from lib.localbackup.common import BackupError
-from lib.localbackup.cli import completion_spec, main, parser
+from lib.localbackup.cli import _backup_args, completion_spec, main, parser
 
 
 class LocalBackupTests(unittest.TestCase):
@@ -49,8 +49,15 @@ APP = App(
     name="sampleapp", default_subdir="apps/sampleapp", default_time="04:00",
     example_config="[sampleapp]\\nsubdir = \\"apps/sampleapp\\"\\n[sampleapp.schedule]\\ntime = \\"04:00\\"",
     backup=backup, restore=restore, archive_sources=sources,
-    now_options=(Option("--profile", "Profile folder"),),
-    restore_options=(Option("--bundle", "Settings ZIP", "archive"),),
+    now_options=(
+        Option("--profile", "Profile folder"),
+        Option("--input-file", "Input file", "file"),
+        Option("--dry-run", "Preview the source", "bool"),
+    ),
+    restore_options=(
+        Option("--bundle", "Settings ZIP", "archive"),
+        Option("--verify-only", "Verify the archive", "bool"),
+    ),
     config_keys=("profile",), parse_config=parse_config,
 )
 ''')
@@ -63,12 +70,24 @@ APP = App(
                 self.assertIn("[sampleapp]", config.example())
                 self.assertIn("app\tsampleapp", completion_spec())
                 self.assertIn("--bundle", completion_spec())
+                self.assertIn("--dry-run\tbool", completion_spec())
+                self.assertIn("--input-file\tfile", completion_spec())
                 output = StringIO()
                 with redirect_stdout(output):
                     self.assertEqual(main(["list", "--json"]), 0)
                 self.assertIn('"sampleapp"', output.getvalue())
-                parsed = parser().parse_args(["now", "sampleapp", "--profile", str(root)])
+                parsed = parser().parse_args([
+                    "now", "sampleapp", "--profile", str(root),
+                    "--input-file", str(module), "--dry-run",
+                ])
                 self.assertEqual(parsed.profile, root)
+                self.assertEqual(parsed.input_file, module)
+                self.assertTrue(parsed.dry_run)
+                self.assertFalse(_backup_args(parser().parse_args(["start", "sampleapp"]), "sampleapp").dry_run)
+                self.assertIsNone(_backup_args(parser().parse_args(["start", "sampleapp"]), "sampleapp").input_file)
+                self.assertTrue(parser().parse_args([
+                    "restore", "sampleapp", "--verify-only",
+                ]).verify_only)
                 with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
                     parser().parse_args(["now", "sampleapp", "--preferences-source", str(root)])
                 output = StringIO()

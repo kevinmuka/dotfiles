@@ -98,9 +98,11 @@ case "$state" in
           [[ "$fields[1]" == option && "$fields[2]" == now && "$fields[3]" == "$selected_app" ]] || continue
           case "$fields[5]" in
             path) run_options+=("$fields[4]=[$fields[6]]:absolute folder:_localbackup_absolute_path -/") ;;
+            file) run_options+=("$fields[4]=[$fields[6]]:file:_files") ;;
             archive) run_options+=("$fields[4]=[$fields[6]]:archive:_files -g '*.zip'") ;;
             int) run_options+=("$fields[4]=[$fields[6]]:count:") ;;
             text) run_options+=("$fields[4]=[$fields[6]]:value:") ;;
+            bool) run_options+=("$fields[4][$fields[6]]") ;;
           esac
         done
         _arguments \
@@ -131,9 +133,11 @@ case "$state" in
           [[ "$fields[1]" == option && "$fields[2]" == restore && "$fields[3]" == "$selected_app" ]] || continue
           case "$fields[5]" in
             path) restore_options+=("$fields[4]=[$fields[6]]:absolute folder:_localbackup_absolute_path -/") ;;
+            file) restore_options+=("$fields[4]=[$fields[6]]:file:_files") ;;
             archive) restore_options+=("$fields[4]=[$fields[6]]:archive:_files -g '*.zip'") ;;
             int) restore_options+=("$fields[4]=[$fields[6]]:count:") ;;
             text) restore_options+=("$fields[4]=[$fields[6]]:value:") ;;
+            bool) restore_options+=("$fields[4][$fields[6]]") ;;
           esac
         done
         _arguments \

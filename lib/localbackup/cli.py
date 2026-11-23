@@ -83,7 +83,7 @@ def _backup_args(args: argparse.Namespace, app: str) -> argparse.Namespace:
     for option in discover()[app].now_options:
         name = option.flag.removeprefix("--").replace("-", "_")
         if not hasattr(result, name):
-            setattr(result, name, None)
+            setattr(result, name, False if option.kind == "bool" else None)
     return result
 
 

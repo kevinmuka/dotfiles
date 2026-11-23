@@ -202,13 +202,82 @@ those, use a format and extraction method that preserve them and test the
 round trip; Alfred's module demonstrates a `ditto`-based archive. The example
 also rejects links and special files rather than silently following them.
 
-`Option.kind` may be `path`, `archive`, `int`, or `text`. It determines the
-`argparse` value type and the completion style. Add app-specific options only
-to `now_options` or `restore_options`; common `--output-dir`, `--keep`, `--apply`,
-and `--json` are provided by the CLI. An app with an existing automatic backup
-agent can set `conflicting_agents={"old_agent_loaded": "its.launchd.label"}`
-on `APP`; `start` then refuses to create a second schedule while that label
-is loaded, and `status` includes the named flag.
+### Custom flags and TOML settings
+
+The example's `now_options` adds `--source PATH`. The CLI parses it as a
+`Path`, exposes it as `args.source` to `backup(settings, args)`, and offers a
+folder in Zsh completion. The module uses it for that one backup, falling back
+to `settings.options["source"]` from TOML and then `DEFAULT_SOURCE`. The
+example's `restore_options` adds `--archive PATH`; `restore(settings, args)`
+reads `args.archive`. A hyphenated name such as `--include-logs` becomes
+`args.include_logs`.
+
+Add more value flags to the relevant descriptor tuple, for example:
+
+```python
+now_options=(
+    Option("--source", "Settings folder", "path"),
+    Option("--manifest", "File manifest", "file"),
+    Option("--limit", "Maximum files", "int"),
+    Option("--profile", "Profile name", "text"),
+    Option("--include-logs", "Include diagnostic logs", "bool"),
+)
+```
+
+`path` accepts a directory path, `file` any file path, `archive` a path with
+ZIP completion, `int` an integer, and `text` a string. `bool` is a switch:
+present means `True`, absent means `False`, and it takes no value. The parser
+does **not** validate file existence, archive contents, numeric ranges, or
+business rules; the module must do that before making changes. For example,
+`--archive` still needs the explicit file and ZIP checks in the restore
+callback. Use long flags beginning with `--`. Value options take one value;
+boolean switches take none. The current interface does not provide required,
+repeated, mutually exclusive, or
+choice-constrained declarations. Validate such relationships in the callback,
+or extend `Option` and its completion handling deliberately if a real app
+needs them.
+
+For persistent scheduled settings, declare the corresponding TOML key in
+`config_keys`, validate it in `parse_config`, and read the returned value from
+`settings.options`. The example implements this for `source`. A boolean
+setting could be written like this:
+
+```python
+def parse_config(table):
+    from ..config import path_setting
+
+    options = {}
+    if "source" in table:
+        options["source"] = path_setting(table["source"], "exampleapp.source")
+    include_logs = table.get("include_logs", False)
+    if not isinstance(include_logs, bool):
+        raise BackupError("exampleapp.include_logs must be true or false")
+    options["include_logs"] = include_logs
+    return options
+
+# In APP:
+config_keys=("source", "include_logs"),
+
+# In backup(settings, args):
+include_logs = args.include_logs or settings.options["include_logs"]
+```
+
+Add `# include_logs = false` to `APP.example_config` when you add the key.
+Use a distinct name or an explicit precedence rule if the user must be able
+to override a TOML `true` with `false` for a one-off run: a positive boolean
+switch alone cannot express that. Update tests for both TOML and CLI values.
+
+`now` and its `run` alias accept `now_options`. `restore` accepts
+`restore_options`. `start` runs one immediate backup **using TOML settings**
+and then enables the schedule; it does not accept app-specific one-off flags.
+Scheduled runs call `now APP` without extra flags, so a setting needed for
+unattended backups must have a default or live in TOML. `stop`, `status`, and
+`archives` currently accept only their common flags. An app with an existing
+automatic backup agent can set
+`conflicting_agents={"old_agent_loaded": "its.launchd.label"}` on `APP`;
+`start` then refuses to create a second schedule while that label is loaded,
+and `status` includes the named flag. These behaviors work without editing
+the CLI or completion for each new app.
 
 ## 3. Configure and exercise it
 
