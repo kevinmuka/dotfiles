@@ -76,18 +76,25 @@ infer success from the presence of some `results`.
 "$HOME/.config/scripts/localbackup" now bartender --json
 ```
 
-The separate Alfred Backup Preferences workflow, if installed, has its own
-backup implementation and schedule. This repository does not install or
-update that workflow. Check its installed version and archive format
-separately. If you connect its Run Script action to `localbackup`, pass the
-workflow's configured preferences path and retention count:
+The customized Alfred Backup Preferences workflow can act as a UI for this
+CLI. Run the versioned [installer](../../tools/localbackup/install_alfred_workflow.py)
+against its installed workflow folder. The installer saves a complete copy in
+a temporary folder, installs the [bridge](../../lib/localbackup/integrations/alfred_workflow_bridge.py),
+and replaces the workflow's backup, restore, schedule, stop, and status scripts
+with CLI calls. The workflow keeps only its keyword and restore confirmation
+settings. `~/.config/localbackup/config.toml` is the sole source for archive
+locations, retention, and schedules. For example:
 
 ```sh
-"$HOME/.config/scripts/localbackup" now alfred \
-  --preferences-source "$alfred_preferences" \
-  --output-dir "$backup_target" \
-  --keep "$backup_count" --json
+python3 tools/localbackup/install_alfred_workflow.py \
+  --workflow "$HOME/Library/Application Support/Alfred/Alfred.alfredpreferences/workflows/user.workflow.YOUR_ID"
 ```
+
+The installed workflow is outside Git. Re-run the installer after replacing
+that workflow, and confirm its keyword still matches your preference. The
+bridge calls the `~/.config/scripts/localbackup` installation, so check which
+permanent checkout that launcher resolves into before enabling its schedule.
+The installer does not start a LaunchAgent.
 
 ## Alfred
 
@@ -98,8 +105,8 @@ workflow's configured preferences path and retention count:
 
 The preferences ZIP keeps the `Alfred.alfredpreferences` root and executable
 file permissions. Older TGZ files are left untouched on disk but are not
-listed or accepted by `localbackup restore`. Whether a separate Alfred
-workflow accepts them depends on that workflow's installed version. The
+listed or accepted by `localbackup restore`. The integrated workflow's
+restore list also shows only preferences ZIPs. The
 Workflow Data ZIP contains its own English README with a manual restore
 procedure. Active SQLite
 databases within Workflow Data are copied through SQLite's backup API. The
@@ -111,9 +118,15 @@ correct. If preferences live elsewhere, pass `--preferences-source PATH` or
 set `alfred.preferences_source` in TOML. The Workflow Data source remains
 `~/Library/Application Support/Alfred/Workflow Data/`; both source folders
 must exist and cannot be symbolic links. There is no Workflow Data source
-override at present.
-Check the separately installed Alfred workflow's restore behavior independently.
-`localbackup restore alfred` can restore preferences, Workflow Data, or both.
+override at present. `localbackup restore alfred` can restore preferences,
+Workflow Data, or both. The Alfred workflow presents preferences ZIPs only;
+use the CLI to restore Workflow Data. When restoring preferences through Alfred,
+the bridge validates the ZIP with `localbackup`, quits Alfred and Alfred
+Preferences, and calls `localbackup restore alfred --preferences ... --apply`.
+It preserves the currently installed custom workflow across that restore so
+an older archive cannot bring back its independent backup scripts. The
+previous full preferences folder is retained beside the restored folder by
+`localbackup`. A direct CLI restore does not preserve this workflow.
 
 ## Bartender
 
@@ -205,11 +218,12 @@ causes a nonzero exit. `start all` can leave earlier apps scheduled if a later
 app fails. `run` is an alias of `now`. `stop` does not require a valid TOML
 file; other app operations load and validate the whole config first.
 
-Alfred's existing Backup Preferences workflow has its own LaunchAgent.
+An unconverted Backup Preferences workflow can still have its old LaunchAgent.
 `localbackup start alfred` refuses to enable a second schedule while that
-agent is loaded. Stop that schedule through the workflow's configured stop
-command before starting the new one. The workflow itself still uses its own
-backup implementation and settings.
+agent is loaded. Stop and remove the old schedule before using the converted
+workflow's `backup start`; the converted workflow does not create its own
+agent. Its `backup now`, `backup stop`, and `backup status` commands delegate
+to `localbackup` and use the same TOML as the terminal command.
 
 Each scheduled agent uses the Python interpreter that installed it. If that
 interpreter is removed or moved, run `localbackup start APP` again. Agent
@@ -335,6 +349,10 @@ and schedule fields, while each module validates its own extra keys.
 checks. `restore.py` contains shared extraction helpers and the existing Alfred
 and Bartender restore implementations; new modules can implement their own
 restore without adding another branch to the CLI or configuration parser.
+`integrations/alfred_workflow_bridge.py` converts CLI JSON to Alfred Script
+Filter results and notifications, and preserves its own workflow folder across
+an Alfred-initiated restore. The workflow installer keeps the installed Alfred
+UI connected to the versioned bridge.
 
 Keep the [application module guide](APP_MODULE_GUIDE.md), CLI help, TOML
 examples, and Zsh completion in sync when changing the module contract. Test
@@ -348,6 +366,6 @@ git diff --check
 
 The tests do not prove behavior of a live Alfred or Bartender installation, a
 loaded LaunchAgent, a restore across app versions, or a cloud transfer. Verify
-those separately when changing their integration. The separately installed
-Alfred Backup Preferences workflow is outside this repository and does not
-change when this code changes.
+those separately when changing their integration. The installed Alfred
+workflow is outside this repository; code changes to the bridge require
+running the installer again.
