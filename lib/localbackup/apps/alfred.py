@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 from zipfile import ZipFile
 
+from .. import progress
 from ..common import (
     BackupError, archive_path, check_zip, local_host_name, restricted_directory,
     prune, sqlite_snapshot,
@@ -118,17 +119,21 @@ def backup(
         ) as pending:
             pending_preferences = Path(pending.name)
         pending_preferences.unlink()
+        progress.phase("Compressing preferences")
         subprocess.run(
             ["/usr/bin/ditto", "-c", "-k", "--keepParent", str(source), str(pending_preferences)],
             check=True,
         )
+        progress.phase("Verifying preferences ZIP")
         validate_zip(pending_preferences, PREFERENCES_ROOT)
 
         with tempfile.TemporaryDirectory(prefix="localbackup-alfred-") as temporary:
             stage = Path(temporary) / DATA_ROOT
             stage.mkdir()
             copied_data = stage / "Workflow Data"
+            progress.phase("Copying Workflow Data")
             subprocess.run(["/usr/bin/ditto", str(workflow_data), str(copied_data)], check=True)
+            progress.phase("Preparing SQLite snapshots")
             _snapshot_databases(workflow_data, copied_data)
             (stage / "README.txt").write_text(_readme(created), encoding="utf-8")
             with tempfile.NamedTemporaryFile(
@@ -137,10 +142,12 @@ def backup(
             ) as pending:
                 pending_data = Path(pending.name)
             pending_data.unlink()
+            progress.phase("Compressing Workflow Data")
             subprocess.run(
                 ["/usr/bin/ditto", "-c", "-k", "--keepParent", str(stage), str(pending_data)],
                 check=True,
             )
+        progress.phase("Verifying Workflow Data ZIP")
         check_zip(
             pending_data,
             (f"{DATA_ROOT}/README.txt",),
@@ -158,6 +165,7 @@ def backup(
             if pending is not None:
                 pending.unlink(missing_ok=True)
 
+    progress.phase("Applying archive retention")
     prune(preferences_dir, PREFERENCES_PREFIX, ".zip", keep)
     prune(data_dir, DATA_PREFIX, ".zip", keep)
     return [

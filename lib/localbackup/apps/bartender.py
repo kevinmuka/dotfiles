@@ -11,6 +11,7 @@ import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from ..common import BackupError, archive_path, check_zip, prune, restricted_directory, sqlite_snapshot
+from .. import progress
 from ..config import default_output_dir
 from ._api import App, Option
 
@@ -81,6 +82,7 @@ def backup(
         raise BackupError(f"Unsupported Bartender version: {version}")
 
     if preferences_bytes is None:
+        progress.phase("Exporting preferences")
         preferences_bytes = subprocess.run(
             ["/usr/bin/defaults", "export", DOMAIN, "-"],
             capture_output=True,
@@ -99,7 +101,9 @@ def backup(
     try:
         with tempfile.TemporaryDirectory(prefix="localbackup-bartender-") as temporary:
             snapshot = Path(temporary) / "default.store"
+            progress.phase("Copying SQLite settings")
             sqlite_snapshot(database, snapshot)
+            progress.phase("Compressing settings")
             with tempfile.NamedTemporaryFile(
                 prefix=".bartender-", suffix=".pending", dir=output_dir, delete=False
             ) as pending_file:
@@ -114,6 +118,7 @@ def backup(
                         f"{ARCHIVE_ROOT}/Group Containers/{GROUP_CONTAINER}/"
                         "Library/Application Support/default.store",
                     )
+        progress.phase("Verifying settings ZIP")
         check_zip(
             pending,
             (
@@ -128,6 +133,7 @@ def backup(
     finally:
         if pending is not None:
             pending.unlink(missing_ok=True)
+    progress.phase("Applying archive retention")
     prune(output_dir, ARCHIVE_PREFIX, ".zip", keep)
     return [{"kind": "settings", "path": str(output)}]
 

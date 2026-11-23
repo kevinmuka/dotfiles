@@ -59,8 +59,17 @@ localbackup archives alfred
 ```
 
 All built-in commands and archive README files are in English. `run` remains
-an alias for `now`. Commands with `--json` print one JSON object; failures use
-a nonzero status. This makes `now` suitable for an Alfred Run Script action:
+an alias for `now`. The terminal uses the macbackup palette for results,
+warnings, errors, and paths. Slow operations show the current phase and its
+elapsed time on stderr. ZIP extraction shows how many entries are complete
+and estimates time remaining from the observed rate. Phases such as
+compression use a moving activity bar with elapsed time. In an `all` command,
+the progress label also shows the current app and the total number of apps.
+
+Progress animation requires a terminal on stderr. Redirected reports have
+plain text, and `NO_COLOR=1` disables colors in a terminal. Use `--json` for
+scripts and Alfred. It prints just the JSON response on stdout and disables
+the progress display, even in an interactive terminal.
 
 Place global `--config` before the command and `--json` after the command or
 app name. Run `localbackup now alfred --help` or the corresponding app help to
@@ -345,6 +354,10 @@ public module per app. `cli.py` builds app-specific parsers from those modules
 and dispatches commands. `config.py` handles the shared TOML root, retention,
 and schedule fields, while each module validates its own extra keys.
 `scheduler.py` owns user LaunchAgent creation, status, and removal.
+`terminal.py` formats human-readable reports and `progress.py` handles
+interactive activity and progress display. A module can optionally use
+`progress.phase("Description")` for an expensive stage. The CLI provides the
+app name and an overall activity bar even when the module reports no phases.
 `common.py` and `archive.py` provide shared locking, archive, SQLite, and ZIP
 checks. `restore.py` contains shared extraction helpers and the existing Alfred
 and Bartender restore implementations; new modules can implement their own

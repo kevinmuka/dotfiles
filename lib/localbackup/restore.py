@@ -14,6 +14,7 @@ import tempfile
 from urllib.parse import quote
 from zipfile import ZipFile
 
+from . import progress
 from .apps import alfred, bartender
 from .common import BackupError, check_zip, restricted_directory
 from .config import AppConfig
@@ -45,9 +46,14 @@ def _extract_zip_tree(source: Path, destination: Path, root: str) -> None:
     count = 0
     directory_modes = []
     with ZipFile(source) as archive:
+        progress.phase("Checking ZIP integrity")
         if archive.testzip() is not None:
             raise BackupError("ZIP integrity check failed")
-        for member in archive.infolist():
+        members = archive.infolist()
+        extraction = progress.phase("Extracting ZIP entries", len(members))
+        for index, member in enumerate(members):
+            if extraction is not None:
+                extraction.completed = index
             relative = _safe_name(member.filename, root)
             if relative is None or not relative:
                 continue
@@ -74,6 +80,8 @@ def _extract_zip_tree(source: Path, destination: Path, root: str) -> None:
                 count += 1
             else:
                 raise BackupError(f"Unsupported ZIP entry: {member.filename}")
+        if extraction is not None:
+            extraction.completed = len(members)
     for directory, mode in reversed(directory_modes):
         directory.chmod(mode)
     if count == 0:
@@ -172,11 +180,13 @@ def restore_alfred(
                     if not staged_source.is_dir():
                         raise BackupError("Workflow Data archive is missing its data folder")
                 if apply:
+                    progress.phase("Staging restored settings")
                     persistent = Path(tempfile.mkdtemp(prefix=f".{target.name}.localbackup-", dir=target.parent))
                     shutil.rmtree(persistent)
                     shutil.copytree(staged_source, persistent, symlinks=True)
                     staged.append((target, persistent))
         if apply:
+            progress.phase("Replacing settings and keeping previous copies")
             token = datetime.now().strftime("%Y%m%d-%H%M%S")
             replaced = []
             try:
@@ -208,6 +218,7 @@ def restore_bartender(
         raise BackupError("Bartender settings destination is missing or is a symbolic link")
     if apply and _app_running("bartender"):
         raise BackupError("Quit Bartender and its Settings window before restoring")
+    progress.phase("Checking settings ZIP")
     with ZipFile(source) as contents:
         required = (
             f"{bartender.ARCHIVE_ROOT}/Preferences/{bartender.DOMAIN}.plist",
@@ -224,12 +235,14 @@ def restore_bartender(
         staged = Path(temporary) / "default.store"
         staged.write_bytes(database_bytes)
         uri = "file:" + quote(str(staged), safe="/") + "?mode=ro"
+        progress.phase("Verifying SQLite settings")
         with closing(sqlite3.connect(uri, uri=True)) as connection:
             if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise BackupError("Bartender database failed validation")
         plan = {"app": "bartender", "apply": apply, "archive": str(source), "destination": str(target)}
         if not apply:
             return plan
+        progress.phase("Saving previous settings")
         token = datetime.now().strftime("%Y%m%d-%H%M%S")
         safety_root = restricted_directory(config.output_dir / "pre-restore")
         safety = Path(tempfile.mkdtemp(prefix=f"{token}-", dir=safety_root))
@@ -248,6 +261,7 @@ def restore_bartender(
         os.close(descriptor)
         replacement = Path(replacement_name)
         try:
+            progress.phase("Applying restored settings")
             subprocess.run(["/usr/bin/defaults", "import", bartender.DOMAIN, str(staged_preferences)], check=True)
             shutil.copy2(staged, replacement)
             for suffix in ("-wal", "-shm"):

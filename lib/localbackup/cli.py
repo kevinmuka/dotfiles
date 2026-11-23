@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from . import __version__, config, restore, scheduler
+from . import __version__, config, progress, restore, scheduler, terminal
 from .apps import discover
 from .common import BackupError, app_lock
 
@@ -104,29 +104,41 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
             raise BackupError(f"Configuration already exists: {path}") from error
         return {"config": str(path), "created": True}
     settings = config.load(path) if args.command != "stop" else {}
+    interactive = not args.json
     if args.command == "restore":
-        with app_lock(args.app):
+        label = "Restore" if args.apply else "Validate restore"
+        with app_lock(args.app), progress.activity(f"{args.app} · {label}", enabled=interactive):
             result = apps[args.app].restore(settings[args.app], args)
             return {"ok": True, **result}
     launcher = Path.home() / ".config/scripts/localbackup"
     results: list[dict[str, object]] = []
     errors: list[dict[str, str]] = []
-    for app in _selected(args.app):
+    names = _selected(args.app)
+    action = {
+        "now": "Backup", "run": "Backup", "start": "Start automatic backups",
+        "stop": "Stop automatic backups", "status": "Check schedule", "archives": "Find archives",
+    }[args.command]
+    for index, app in enumerate(names, 1):
+        count = f" ({index}/{len(names)})" if len(names) > 1 else ""
         try:
-            if args.command in ("now", "run", "start"):
-                if args.command == "start":
-                    scheduler.preflight(app, settings[app], launcher, path)
-                with app_lock(app):
-                    archives = apps[app].backup(settings[app], _backup_args(args, app))
-                    entry: dict[str, object] = {"app": app, "archives": archives}
+            with progress.activity(f"{app}{count} · {action}", enabled=interactive):
+                if args.command in ("now", "run", "start"):
                     if args.command == "start":
-                        entry["schedule"] = scheduler.start(app, settings[app], launcher, path)
-            elif args.command == "stop":
-                entry = scheduler.stop(app)
-            elif args.command == "status":
-                entry = scheduler.status(app, settings[app], launcher, path)
-            else:
-                entry = {"app": app, "archives": restore.archives(app, settings[app])}
+                        progress.phase("Checking schedule")
+                        scheduler.preflight(app, settings[app], launcher, path)
+                    with app_lock(app):
+                        progress.phase("Creating archives")
+                        archives = apps[app].backup(settings[app], _backup_args(args, app))
+                        entry: dict[str, object] = {"app": app, "archives": archives}
+                        if args.command == "start":
+                            progress.phase("Applying schedule")
+                            entry["schedule"] = scheduler.start(app, settings[app], launcher, path)
+                elif args.command == "stop":
+                    entry = scheduler.stop(app)
+                elif args.command == "status":
+                    entry = scheduler.status(app, settings[app], launcher, path)
+                else:
+                    entry = {"app": app, "archives": restore.archives(app, settings[app])}
             results.append(entry)
         except Exception as error:
             errors.append({"app": app, "message": str(error)})
@@ -138,24 +150,22 @@ def main(argv: list[str] | None = None) -> int:
         print(completion_spec())
         return 0
     args = parser().parse_args(argv)
+    interrupted = False
     try:
         output = _execute(args)
+    except KeyboardInterrupt:
+        interrupted = True
+        output = {"ok": False, "results": [], "errors": [
+            {"app": getattr(args, "app", "localbackup"), "message": "Interrupted"},
+        ]}
     except Exception as error:
         output = {"ok": False, "results": [], "errors": [
             {"app": getattr(args, "app", "localbackup"), "message": str(error)}
         ]}
     if getattr(args, "json", False):
         print(json.dumps(output))
-    elif "errors" in output and output["errors"]:
-        for error in output["errors"]:
-            print(f"localbackup: {error['app']}: {error['message']}", file=sys.stderr)
-        for result in output.get("results", []):
-            print(json.dumps(result, indent=2))
-    elif args.command == "list":
-        print("\n".join(output["apps"]))
-    elif args.command == "init":
-        print(output["config"])
     else:
-        for result in output.get("results", [output]):
-            print(json.dumps(result, indent=2))
+        terminal.report(args.command, output, apply=getattr(args, "apply", False))
+    if interrupted:
+        return 130
     return 0 if output.get("ok", True) else 1
