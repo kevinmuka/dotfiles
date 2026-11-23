@@ -279,6 +279,12 @@ automatic backup agent can set
 and `status` includes the named flag. These behaviors work without editing
 the CLI or completion for each new app.
 
+Before removing or renaming an app module, run `localbackup stop APP` while
+the old name is still discoverable. An installed LaunchAgent survives removal
+of the Python module and would otherwise keep attempting a command that no
+longer exists. Preserve or deliberately migrate its archives and TOML section;
+the configuration parser rejects unknown app sections after removal.
+
 ## 3. Configure and exercise it
 
 The module is discovered as soon as it is in the `apps/` package used by the
@@ -389,3 +395,27 @@ classification for the new archive path before transferring it to cloud
 storage. Adding a localbackup module does not update macbackup policy, make a
 cloud copy, or prove that the app can be restored on another Mac. Perform a
 manual restore rehearsal before relying on the archive.
+
+## 4. Review and maintenance contract
+
+For a new app, review these properties before calling the module complete:
+
+| Area | Required evidence |
+| --- | --- |
+| Coverage | The module and README identify every included source and significant excluded state; missing required sources fail rather than producing an empty archive. |
+| Consistency | Live databases use a snapshot or supported export; a copied database is reopened and checked from the archive. |
+| Publication | The archive is built in a temporary file, validated, then published in the destination; failed work removes temporary files and does not prune older good archives. |
+| Paths | Sources and restore targets reject unexpected links, special files, traversal, and archive entries outside the intended root. |
+| Recovery | Preview validates without replacing app data; apply checks the app state, preserves the previous settings, and has an interruption or rollback story. |
+| Automation | Manual backup leaves the schedule alone; `start` uses persistent settings and the correct launcher, and `stop` keeps archives. |
+| Verification | Synthetic tests cover contents, restore preview/apply, failures, and option isolation; a real restore rehearsal is recorded separately. |
+
+The CLI holds a per-app lock around backup and restore callbacks, including the
+backup performed by `start`. Calling a callback directly in tests bypasses
+that lock. A module should not perform app I/O during import: discovery is used
+by `list`, help, TOML parsing, and Tab completion. Keep archive names, output
+paths, restore behavior, and `--json` fields stable for existing users, or
+document a deliberate compatibility break and its migration. Update this guide
+when the module contract changes; update the app's coverage and restore
+instructions when its source layout changes. Treat a passing synthetic suite
+as evidence for the code path tested, not as proof of a live app or cloud copy.
